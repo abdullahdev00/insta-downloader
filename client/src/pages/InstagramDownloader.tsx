@@ -3,7 +3,6 @@ import ParticleBackground from '@/components/ParticleBackground';
 import FloatingHeader from '@/components/FloatingHeader';
 import HeroSection from '@/components/HeroSection';
 import MagicInput from '@/components/MagicInput';
-import ContentTypeSelector from '@/components/ContentTypeSelector';
 import ContentPreviewCard from '@/components/ContentPreviewCard';
 import { useToast } from '@/hooks/use-toast';
 
@@ -24,40 +23,11 @@ interface DownloadedContent {
 }
 
 export default function InstagramDownloader() {
-  const [selectedContentType, setSelectedContentType] = useState<string>('posts');
   const [downloadedContent, setDownloadedContent] = useState<DownloadedContent[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const { toast } = useToast();
 
-  // Load recent downloads on component mount
-  useEffect(() => {
-    loadRecentDownloads();
-  }, []);
 
-  const loadRecentDownloads = async () => {
-    try {
-      const response = await fetch('/api/downloads?limit=10');
-      if (response.ok) {
-        const downloads = await response.json();
-        const formattedContent = downloads
-          .filter((download: any) => download.metadata)
-          .map((download: any) => ({
-            id: download.id,
-            downloadId: download.id,
-            ...download.metadata,
-            avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`,
-            status: download.status
-          }));
-        
-        if (formattedContent.length > 0) {
-          setDownloadedContent(formattedContent);
-          setShowPreview(true);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading recent downloads:', error);
-    }
-  };
 
   const handleDownload = (metadata: any) => {
     console.log('Processing download for:', metadata);
@@ -125,10 +95,6 @@ export default function InstagramDownloader() {
     poll();
   };
 
-  const handleContentTypeSelect = (type: string) => {
-    setSelectedContentType(type);
-    console.log('Content type changed to:', type);
-  };
 
   const handleFinalDownload = async (content: DownloadedContent) => {
     if (!content.downloadId) return;
@@ -164,10 +130,6 @@ export default function InstagramDownloader() {
         {/* Hero Section */}
         <HeroSection />
         
-        {/* Content Type Selection */}
-        <section className="py-20 px-4">
-          <ContentTypeSelector onSelect={handleContentTypeSelect} />
-        </section>
         
         {/* Magic Input */}
         <section className="py-20 px-4">

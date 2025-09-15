@@ -38,13 +38,6 @@ const contentTypes: ContentType[] = [
     description: 'Long-form videos',
     gradient: 'from-blue-500 to-cyan-500'
   },
-  {
-    id: 'highlights',
-    name: 'Highlights',
-    icon: <Bookmark className="w-8 h-8" />,
-    description: 'Saved story collections',
-    gradient: 'from-green-500 to-teal-500'
-  }
 ];
 
 interface ContentTypeSelectorProps {
