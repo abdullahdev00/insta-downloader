@@ -103,12 +103,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "Invalid Instagram URL" });
       }
 
-      const metadata = await instagramService.extractMetadata(url);
-      res.json(metadata);
+      const contentType = instagramService.detectContentType(url);
+      
+      try {
+        const metadata = await instagramService.extractMetadata(url);
+        res.json(metadata);
+      } catch (extractionError: any) {
+        console.error("Error extracting metadata:", extractionError);
+        
+        // Handle story-specific errors with actionable messages
+        if (contentType === 'story') {
+          if (extractionError.message && extractionError.message.includes('private')) {
+            return res.status(422).json({ 
+              error: "This story appears to be private or expired. Stories are only visible to followers and disappear after 24 hours. For private stories, you may need to add an IG_SESSIONID environment variable with your Instagram session cookie." 
+            });
+          } else if (extractionError.message && extractionError.message.includes('login')) {
+            return res.status(422).json({ 
+              error: "This story requires authentication. Add an IG_SESSIONID environment variable with your Instagram session cookie to access private stories." 
+            });
+          } else {
+            return res.status(422).json({ 
+              error: "Unable to extract story content. Stories may be private, expired (24h limit), or require authentication. Try adding IG_SESSIONID environment variable for private stories." 
+            });
+          }
+        }
+        
+        // For non-story content, return generic error
+        res.status(500).json({ error: "Failed to extract content metadata" });
+      }
       
     } catch (error) {
-      console.error("Error extracting metadata:", error);
-      res.status(500).json({ error: "Failed to extract content metadata" });
+      console.error("Error in preview endpoint:", error);
+      res.status(400).json({ error: "Invalid request data" });
     }
   });
 
@@ -116,6 +142,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   async function processDownload(downloadId: string, url: string) {
     try {
       await storage.updateDownload(downloadId, { status: 'processing' });
+      
+      const contentType = instagramService.detectContentType(url);
       
       // Extract metadata
       const metadata = await instagramService.extractMetadata(url);
@@ -143,8 +171,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.updateDownload(downloadId, { status: 'failed' });
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error processing download:", error);
+      
+      // For stories, just mark as failed (detailed error already logged)
       await storage.updateDownload(downloadId, { status: 'failed' });
     }
   }

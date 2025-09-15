@@ -86,8 +86,11 @@ export class InstagramService {
       throw new Error('Invalid Instagram URL');
     }
 
+    const type = this.detectContentType(url);
     let browser = null;
     let page = null;
+    let responseVideoUrls: string[] = [];
+    let responseImageUrls: string[] = [];
 
     try {
       browser = await this.initBrowser();
@@ -95,10 +98,42 @@ export class InstagramService {
 
       await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
       
+      // For stories, add optional authentication and use mobile site
+      if (type === 'story') {
+        // Add session cookie if available for private stories
+        if (process.env.IG_SESSIONID) {
+          await page.setCookie({
+            name: 'sessionid',
+            value: process.env.IG_SESSIONID,
+            domain: '.instagram.com',
+            secure: true,
+            httpOnly: true
+          });
+        }
+        
+        // Use mobile site for simpler markup
+        url = url.replace('www.instagram.com', 'm.instagram.com');
+        
+        // Add network response monitoring for stories
+        page.on('response', (response) => {
+          const contentType = response.headers()['content-type'] || '';
+          const responseUrl = response.url();
+          
+          if (!/cdninstagram|fbcdn/.test(responseUrl)) return;
+          
+          if (contentType.includes('video') && responseUrl.includes('.mp4')) {
+            responseVideoUrls.push(responseUrl);
+          } else if (contentType.includes('image') && (responseUrl.includes('.jpg') || responseUrl.includes('.jpeg'))) {
+            responseImageUrls.push(responseUrl);
+          }
+        });
+      }
+      
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
       
-      // Wait for content to load
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait longer for stories to load
+      const waitTime = type === 'story' ? 7000 : 3000;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
 
       // Extract basic info from page using simple evaluation
       const title = await page.title();
@@ -135,6 +170,21 @@ export class InstagramService {
               result.allUrls.push(source.src);
             }
           });
+        });
+        
+        // Method 1.5: Check preload links for stories
+        document.querySelectorAll('link[rel="preload"]').forEach(link => {
+          const href = link.getAttribute('href');
+          const as = link.getAttribute('as');
+          if (href && (href.includes('cdninstagram') || href.includes('fbcdn'))) {
+            if (as === 'video' && href.includes('.mp4')) {
+              result.videoUrls.push(href);
+              result.allUrls.push(href);
+            } else if (as === 'image' && (href.includes('.jpg') || href.includes('.jpeg'))) {
+              result.imageUrls.push(href);
+              result.allUrls.push(href);
+            }
+          }
         });
         
         // Method 2: Parse all script tags for embedded data
@@ -200,21 +250,43 @@ export class InstagramService {
         return result;
       }).catch(() => ({ videoUrls: [], imageUrls: [], allUrls: [] }));
       
-      const { videoUrls, imageUrls } = extractedData;
+      // Merge response-captured URLs with DOM-extracted ones
+      const allVideoUrls = Array.from(new Set([...responseVideoUrls, ...extractedData.videoUrls]));
+      const allImageUrls = Array.from(new Set([...responseImageUrls, ...extractedData.imageUrls]));
+      const { videoUrls, imageUrls } = { videoUrls: allVideoUrls, imageUrls: allImageUrls };
 
-      // Process extracted data
-      const type = this.detectContentType(url);
-      const usernameMatch = (ogTitle || title).match(/^(.+?)\s+on\s+Instagram/) || 
-                           (ogTitle || title).match(/@(\w+)/) ||
-                           url.match(/instagram\.com\/([^\/]+)/);
-      const username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
+      // Process extracted data and fix username parsing for stories
+      let username = 'instagram_user';
+      if (type === 'story') {
+        const storyMatch = url.match(/instagram\.com\/stories\/([^\/]+)/);
+        username = storyMatch ? storyMatch[1] : 'instagram_user';
+      } else {
+        const usernameMatch = (ogTitle || title).match(/^(.+?)\s+on\s+Instagram/) || 
+                             (ogTitle || title).match(/@(\w+)/) ||
+                             url.match(/instagram\.com\/([^\/]+)/);
+        username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
+      }
 
       // Prioritize high-quality media URLs based on content type
       let mediaUrls: string[] = [];
       
       console.log(`Extracted URLs for ${type}:`, { videoUrls, imageUrls, ogVideo, ogImage });
       
-      if (type === 'reel' || type === 'igtv') {
+      if (type === 'story') {
+        // For stories, prefer videos first, then images
+        if (videoUrls.length > 0) {
+          mediaUrls = videoUrls;
+        } else if (imageUrls.length > 0) {
+          mediaUrls = imageUrls;
+        } else if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('cdninstagram') || ogVideo.includes('fbcdn'))) {
+          mediaUrls = [ogVideo];
+        } else if (ogImage && !ogImage.includes('blob:') && (ogImage.includes('cdninstagram') || ogImage.includes('fbcdn'))) {
+          mediaUrls = [ogImage];
+        } else {
+          console.warn(`No story media found. Response URLs: videos=${responseVideoUrls.length}, images=${responseImageUrls.length}`);
+          throw new Error('No story media found; it may be private, expired or requires login. Try adding IG_SESSIONID environment variable for private stories.');
+        }
+      } else if (type === 'reel' || type === 'igtv') {
         // For videos, MUST have video URLs - no fallback to images for video content
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
@@ -267,8 +339,14 @@ export class InstagramService {
     } catch (error) {
       console.error('Error extracting Instagram metadata:', error);
       
-      // Fallback metadata if extraction fails
       const type = this.detectContentType(url);
+      
+      // For stories, don't provide fallback - re-throw the error for proper handling
+      if (type === 'story') {
+        throw error;
+      }
+      
+      // Fallback metadata only for posts and reels if extraction fails
       return {
         type,
         username: 'instagram_user',
