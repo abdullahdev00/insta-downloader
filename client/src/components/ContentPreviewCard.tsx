@@ -208,23 +208,6 @@ export default function ContentPreviewCard({
           <span className="font-medium text-xs text-foreground">{username}</span>
         </div>
 
-        {/* Stats */}
-        <div className="flex items-center gap-3 text-muted-foreground text-xs">
-          <div className="flex items-center gap-1">
-            <Heart className="w-3 h-3 text-red-500" />
-            <span>{formatNumber(likes)}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <MessageCircle className="w-3 h-3" />
-            <span>{formatNumber(comments)}</span>
-          </div>
-          {views && (
-            <div className="flex items-center gap-1">
-              <Eye className="w-3 h-3" />
-              <span>{formatNumber(views)}</span>
-            </div>
-          )}
-        </div>
 
         {/* Caption */}
         {caption && (
