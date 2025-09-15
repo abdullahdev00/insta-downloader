@@ -32,14 +32,13 @@ export default function InstagramDownloader() {
   const handleDownload = (metadata: any) => {
     console.log('Processing download for:', metadata);
     
-    // Add avatar if not present
-    const contentWithAvatar = {
+    // Add processing status
+    const contentWithStatus = {
       ...metadata,
-      avatar: metadata.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`,
       status: 'processing'
     };
     
-    setDownloadedContent(prev => [contentWithAvatar, ...prev]);
+    setDownloadedContent(prev => [contentWithStatus, ...prev]);
     setShowPreview(true);
 
     // Poll for download status if we have a downloadId
@@ -170,7 +169,7 @@ export default function InstagramDownloader() {
                     type={content.type}
                     thumbnail={content.thumbnail}
                     username={content.username}
-                    avatar={content.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`}
+                    avatar={content.avatar || ''}
                     likes={content.likes || 0}
                     comments={content.comments || 0}
                     views={content.views}

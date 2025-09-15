@@ -112,15 +112,19 @@ export class InstagramService {
       
       const response = await axios.get(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate',
+          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
           'DNT': '1',
           'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1'
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Cache-Control': 'no-cache'
         },
-        timeout: 5000
+        timeout: 10000
       });
 
       const $ = cheerio.load(response.data);
@@ -145,19 +149,31 @@ export class InstagramService {
       $('script').each((_, script) => {
         const content = $(script).html() || '';
         
-        // Extract video URLs
-        const videoMatches = content.match(/"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g);
-        if (videoMatches) {
-          videoMatches.forEach(match => {
-            const urlMatch = match.match(/"video_url"\s*:\s*"([^"]+)"/);
-            if (urlMatch) {
-              let mediaUrl = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-              if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && !mediaUrl.includes('/rsrc.php/')) {
-                videoUrls.push(mediaUrl);
+        // Extract video URLs with multiple patterns
+        const videoPatterns = [
+          /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"src"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /videoUrl['"']?\s*:\s*['"]([^'"]*\.mp4[^'"]*)['"]?/g,
+          /"video_versions"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
+        ];
+        
+        videoPatterns.forEach(pattern => {
+          const matches = content.match(pattern);
+          if (matches) {
+            matches.forEach(match => {
+              const urlMatch = match.match(/"(?:video_url|src|url|playback_url)"\s*:\s*"([^"]+)"|videoUrl['"']?\s*:\s*['"]([^'"]+)['"]?/);
+              if (urlMatch) {
+                let mediaUrl = (urlMatch[1] || urlMatch[2]).replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && 
+                    !mediaUrl.includes('/rsrc.php/') && 
+                    mediaUrl.includes('.mp4')) {
+                  videoUrls.push(mediaUrl);
+                }
               }
-            }
-          });
-        }
+            });
+          }
+        });
 
         // Extract image URLs
         const imageMatches = content.match(/"display_url"\s*:\s*"([^"]*\.(?:jpg|jpeg)[^"]*)"/g);
@@ -197,16 +213,20 @@ export class InstagramService {
 
       console.log(`Fast extraction successful! Found ${mediaUrls.length} media URLs`);
 
+      if (!ogImage) {
+        throw new Error('No thumbnail found for content');
+      }
+
       return {
         type,
         username,
         caption: ogDescription || 'Instagram content',
-        thumbnail: ogImage || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
+        thumbnail: ogImage,
         mediaUrls,
-        likes: Math.floor(Math.random() * 100000),
-        comments: Math.floor(Math.random() * 1000),
-        views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,
-        duration: type === 'reel' || type === 'igtv' ? '0:' + Math.floor(Math.random() * 60).toString().padStart(2, '0') : undefined,
+        likes: 0,
+        comments: 0,
+        views: type === 'reel' || type === 'igtv' ? 0 : undefined,
+        duration: type === 'reel' || type === 'igtv' ? '0:00' : undefined,
         mediaCount: mediaUrls.length
       };
 
@@ -276,7 +296,7 @@ export class InstagramService {
         });
       }
 
-      await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1');
+      await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111');
       
       // For stories, add optional authentication and use mobile site
       if (type === 'story') {
@@ -566,13 +586,13 @@ export class InstagramService {
         type,
         username,
         caption: ogDescription || 'Instagram content',
-        thumbnail: ogImage || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
+        thumbnail: ogImage,
         mediaUrls,
-        likes: Math.floor(Math.random() * 100000),
-        comments: Math.floor(Math.random() * 1000),
-        views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,
-        duration: type === 'reel' || type === 'igtv' ? '0:' + Math.floor(Math.random() * 60).toString().padStart(2, '0') : undefined,
-        mediaCount: Math.random() > 0.7 ? Math.floor(Math.random() * 5) + 2 : 1
+        likes: 0,
+        comments: 0,
+        views: type === 'reel' || type === 'igtv' ? 0 : undefined,
+        duration: type === 'reel' || type === 'igtv' ? '0:00' : undefined,
+        mediaCount: mediaUrls.length
       };
 
       console.log(`Successfully extracted metadata for ${type}:`, {
@@ -589,29 +609,13 @@ export class InstagramService {
       
       return metadata as InstagramMetadata;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error extracting Instagram metadata:', error);
       
       const type = this.detectContentType(url);
       
-      // For stories, don't provide fallback - re-throw the error for proper handling
-      if (type === 'story') {
-        throw error;
-      }
-      
-      // Fallback metadata only for posts and reels if extraction fails
-      return {
-        type,
-        username: 'instagram_user',
-        caption: 'Instagram content',
-        thumbnail: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
-        mediaUrls: ['https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=800&fit=crop'],
-        likes: Math.floor(Math.random() * 100000),
-        comments: Math.floor(Math.random() * 1000),
-        views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,
-        duration: type === 'reel' || type === 'igtv' ? '0:' + Math.floor(Math.random() * 60).toString().padStart(2, '0') : undefined,
-        mediaCount: 1
-      };
+      // Don't provide fallback mock data - throw error for proper handling
+      throw new Error(`Failed to extract Instagram content: ${error.message}`);
     } finally {
       // Only close the page, keep browser persistent for reuse
       try {
