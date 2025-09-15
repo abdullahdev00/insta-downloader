@@ -5,6 +5,10 @@ import HeroSection from '@/components/HeroSection';
 import MagicInput from '@/components/MagicInput';
 import ContentPreviewCard from '@/components/ContentPreviewCard';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Eye, Grid } from 'lucide-react';
 
 interface DownloadedContent {
   id?: string;
@@ -25,7 +29,9 @@ interface DownloadedContent {
 export default function InstagramDownloader() {
   const [downloadedContent, setDownloadedContent] = useState<DownloadedContent[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [showAllModal, setShowAllModal] = useState(false);
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
 
 
@@ -162,25 +168,163 @@ export default function InstagramDownloader() {
                 </p>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {downloadedContent.map((content, index) => (
-                  <ContentPreviewCard 
-                    key={content.downloadId || index}
-                    type={content.type}
-                    thumbnail={content.thumbnail}
-                    username={content.username}
-                    avatar={content.avatar || ''}
-                    likes={content.likes || 0}
-                    comments={content.comments || 0}
-                    views={content.views}
-                    duration={content.duration}
-                    caption={content.caption}
-                    mediaCount={content.mediaCount}
-                    status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
-                    onDownload={() => handleFinalDownload(content)}
-                  />
-                ))}
-              </div>
+              {/* Mobile View: Show only 3 latest + View All button */}
+              {isMobile ? (
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 gap-6">
+                    {downloadedContent.slice(0, 3).map((content, index) => (
+                      <ContentPreviewCard 
+                        key={content.downloadId || index}
+                        type={content.type}
+                        thumbnail={content.thumbnail}
+                        username={content.username}
+                        avatar={content.avatar || ''}
+                        likes={content.likes || 0}
+                        comments={content.comments || 0}
+                        views={content.views}
+                        duration={content.duration}
+                        caption={content.caption}
+                        mediaCount={content.mediaCount}
+                        status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                        onDownload={() => handleFinalDownload(content)}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* View All Button for Mobile */}
+                  {downloadedContent.length > 3 && (
+                    <div className="text-center">
+                      <Dialog open={showAllModal} onOpenChange={setShowAllModal}>
+                        <DialogTrigger asChild>
+                          <Button 
+                            size="lg" 
+                            className="bg-instagram-gradient hover:bg-instagram-hover text-white px-8 py-3 rounded-xl shadow-lg hover-elevate"
+                          >
+                            <Grid className="w-5 h-5 mr-2" />
+                            View All ({downloadedContent.length})
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle className="text-2xl font-bold text-center">
+                              All Downloads ({downloadedContent.length})
+                            </DialogTitle>
+                          </DialogHeader>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+                            {downloadedContent.map((content, index) => (
+                              <ContentPreviewCard 
+                                key={content.downloadId || index}
+                                type={content.type}
+                                thumbnail={content.thumbnail}
+                                username={content.username}
+                                avatar={content.avatar || ''}
+                                likes={content.likes || 0}
+                                comments={content.comments || 0}
+                                views={content.views}
+                                duration={content.duration}
+                                caption={content.caption}
+                                mediaCount={content.mediaCount}
+                                status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                                onDownload={() => handleFinalDownload(content)}
+                              />
+                            ))}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Desktop View: 2 rows then horizontal scroll */
+                <div className="space-y-6">
+                  {/* First 2 rows (8 items on xl:grid-cols-4) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {downloadedContent.slice(0, 8).map((content, index) => (
+                      <ContentPreviewCard 
+                        key={content.downloadId || index}
+                        type={content.type}
+                        thumbnail={content.thumbnail}
+                        username={content.username}
+                        avatar={content.avatar || ''}
+                        likes={content.likes || 0}
+                        comments={content.comments || 0}
+                        views={content.views}
+                        duration={content.duration}
+                        caption={content.caption}
+                        mediaCount={content.mediaCount}
+                        status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                        onDownload={() => handleFinalDownload(content)}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* Horizontal scroll for remaining items */}
+                  {downloadedContent.length > 8 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-semibold">More Downloads</h3>
+                        <Dialog open={showAllModal} onOpenChange={setShowAllModal}>
+                          <DialogTrigger asChild>
+                            <Button variant="outline" size="sm" className="hover-elevate">
+                              <Eye className="w-4 h-4 mr-2" />
+                              View All ({downloadedContent.length})
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle className="text-2xl font-bold text-center">
+                                All Downloads ({downloadedContent.length})
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                              {downloadedContent.map((content, index) => (
+                                <ContentPreviewCard 
+                                  key={content.downloadId || index}
+                                  type={content.type}
+                                  thumbnail={content.thumbnail}
+                                  username={content.username}
+                                  avatar={content.avatar || ''}
+                                  likes={content.likes || 0}
+                                  comments={content.comments || 0}
+                                  views={content.views}
+                                  duration={content.duration}
+                                  caption={content.caption}
+                                  mediaCount={content.mediaCount}
+                                  status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                                  onDownload={() => handleFinalDownload(content)}
+                                />
+                              ))}
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
+                      
+                      <div className="overflow-x-auto pb-4">
+                        <div className="flex gap-6 w-max">
+                          {downloadedContent.slice(8).map((content, index) => (
+                            <div key={content.downloadId || (index + 8)} className="flex-none w-80">
+                              <ContentPreviewCard 
+                                type={content.type}
+                                thumbnail={content.thumbnail}
+                                username={content.username}
+                                avatar={content.avatar || ''}
+                                likes={content.likes || 0}
+                                comments={content.comments || 0}
+                                views={content.views}
+                                duration={content.duration}
+                                caption={content.caption}
+                                mediaCount={content.mediaCount}
+                                status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                                onDownload={() => handleFinalDownload(content)}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </section>
         )}
