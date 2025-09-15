@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Heart, MessageCircle, Send, Bookmark, Download, Eye, Clock } from 'lucide-react';
+import { Heart, MessageCircle, Send, Bookmark, Download, Eye, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -14,6 +14,7 @@ interface ContentPreviewCardProps {
   duration?: string;
   caption?: string;
   mediaCount?: number;
+  status?: 'processing' | 'completed' | 'failed' | 'pending';
   onDownload?: () => void;
 }
 
@@ -28,12 +29,15 @@ export default function ContentPreviewCard({
   duration,
   caption,
   mediaCount,
+  status = 'completed',
   onDownload
 }: ContentPreviewCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = async () => {
+    if (status !== 'completed') return;
+    
     setIsDownloading(true);
     console.log(`Downloading ${type} from ${username}`);
     
@@ -43,6 +47,50 @@ export default function ContentPreviewCard({
     setIsDownloading(false);
     onDownload?.();
   };
+
+  const getStatusButton = () => {
+    if (status === 'processing') {
+      return {
+        text: 'Processing...',
+        icon: <Loader2 className="w-5 h-5 mr-2 animate-spin" />,
+        disabled: true,
+        className: 'bg-yellow-500 hover:bg-yellow-600 cursor-not-allowed'
+      };
+    }
+    if (status === 'failed') {
+      return {
+        text: 'Failed',
+        icon: <AlertCircle className="w-5 h-5 mr-2" />,
+        disabled: true,
+        className: 'bg-red-500 hover:bg-red-600 cursor-not-allowed'
+      };
+    }
+    if (status === 'pending') {
+      return {
+        text: 'Pending',
+        icon: <Clock className="w-5 h-5 mr-2" />,
+        disabled: true,
+        className: 'bg-gray-500 hover:bg-gray-600 cursor-not-allowed'
+      };
+    }
+    // completed status
+    if (isDownloading) {
+      return {
+        text: 'Downloading...',
+        icon: <div className="w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />,
+        disabled: true,
+        className: 'bg-instagram-gradient hover:bg-instagram-hover'
+      };
+    }
+    return {
+      text: 'Download',
+      icon: <Download className="w-5 h-5 mr-2" />,
+      disabled: false,
+      className: 'bg-instagram-gradient hover:bg-instagram-hover'
+    };
+  };
+
+  const buttonConfig = getStatusButton();
 
   const formatNumber = (num: number) => {
     if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
@@ -139,22 +187,13 @@ export default function ContentPreviewCard({
           <div className="absolute inset-0 flex items-center justify-center">
             <Button
               onClick={handleDownload}
-              disabled={isDownloading}
+              disabled={buttonConfig.disabled}
               size="lg"
-              className="bg-instagram-gradient hover:bg-instagram-hover text-white rounded-full px-6 py-3 transform transition-all duration-300 hover:scale-110"
+              className={`${buttonConfig.className} text-white rounded-full px-6 py-3 transform transition-all duration-300 hover:scale-110`}
               data-testid={`button-download-${username}`}
             >
-              {isDownloading ? (
-                <>
-                  <div className="w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="w-5 h-5 mr-2" />
-                  Download
-                </>
-              )}
+              {buttonConfig.icon}
+              {buttonConfig.text}
             </Button>
           </div>
         </div>

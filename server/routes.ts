@@ -7,6 +7,24 @@ import { z } from "zod";
 import path from "path";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Add defensive middleware for API routes to ensure JSON responses
+  app.use('/api/*', (req, res, next) => {
+    // Set content type to JSON for all API routes
+    res.setHeader('Content-Type', 'application/json');
+    
+    // Override res.send to ensure we never accidentally send HTML
+    const originalSend = res.send;
+    res.send = function(data) {
+      if (typeof data === 'string' && data.startsWith('<!DOCTYPE html>')) {
+        console.error(`Attempted to send HTML response to API route: ${req.path}`);
+        return originalSend.call(this, JSON.stringify({ error: 'Internal server error' }));
+      }
+      return originalSend.call(this, data);
+    };
+    
+    next();
+  });
+
   // Instagram URL processing endpoint
   app.post("/api/instagram/process", async (req, res) => {
     try {

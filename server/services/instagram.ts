@@ -178,7 +178,12 @@ export class InstagramService {
         mediaCount: 1
       };
     } finally {
-      await page.close();
+      // CRITICAL: Always close the page to prevent memory leaks
+      try {
+        await page.close();
+      } catch (closeError) {
+        console.error('Error closing Puppeteer page:', closeError);
+      }
     }
   }
 

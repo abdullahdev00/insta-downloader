@@ -199,8 +199,17 @@ export default function InstagramDownloader() {
                 {downloadedContent.map((content, index) => (
                   <ContentPreviewCard 
                     key={content.downloadId || index}
-                    {...content}
+                    type={content.type}
+                    thumbnail={content.thumbnail}
+                    username={content.username}
                     avatar={content.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`}
+                    likes={content.likes || 0}
+                    comments={content.comments || 0}
+                    views={content.views}
+                    duration={content.duration}
+                    caption={content.caption}
+                    mediaCount={content.mediaCount}
+                    status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
                     onDownload={() => handleFinalDownload(content)}
                   />
                 ))}
