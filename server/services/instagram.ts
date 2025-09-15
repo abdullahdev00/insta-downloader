@@ -218,9 +218,10 @@ export class InstagramService {
         }
       }
       
-      // Fallback to HTML scraping
-      if (!jsonData) {
-        const response = await axios.get(url, {
+      // Fallback to HTML scraping when JSON API fails or no media URLs found
+      // Always try HTML scraping if we don't have media URLs yet
+      console.log('JSON API failed, falling back to HTML scraping...');
+      const response = await axios.get(url, {
           headers: {
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
@@ -428,7 +429,6 @@ export class InstagramService {
         duration: contentType === 'reel' || contentType === 'igtv' ? '0:00' : undefined,
         mediaCount: mediaUrls.length
       };
-      }
 
     } catch (error: any) {
       console.log('Fast extraction failed, falling back to Puppeteer:', error.message);
