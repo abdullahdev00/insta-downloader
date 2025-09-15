@@ -34,6 +34,7 @@ export default function ContentPreviewCard({
 }: ContentPreviewCardProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const handleDownload = async () => {
     if (status !== 'completed') return;
@@ -162,24 +163,24 @@ export default function ContentPreviewCard({
 
       {/* Thumbnail */}
       <div className={`relative ${config.aspectRatio} overflow-hidden`}>
+        {/* Loading skeleton */}
+        {!imageLoaded && (
+          <div className="absolute inset-0 bg-gray-200 animate-pulse flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+          </div>
+        )}
+        
         <img 
           src={thumbnail} 
           alt={`${type} by ${username}`}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          onLoad={() => setImageLoaded(true)}
+          style={{ opacity: imageLoaded ? 1 : 0 }}
         />
         
-        {/* Duration overlay for videos */}
-        {duration && (
-          <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-2 py-1 rounded-md">
-            {duration}
-          </div>
-        )}
 
-        {/* Hover overlay */}
-        <div className={`
-          absolute inset-0 bg-black/40 transition-opacity duration-300
-          ${isHovered ? 'opacity-100' : 'opacity-0'}
-        `}>
+        {/* Always visible download overlay */}
+        <div className="absolute inset-0 bg-black/20 transition-all duration-300 hover:bg-black/40">
           <div className="absolute inset-0 flex items-center justify-center">
             <Button
               onClick={handleDownload}
