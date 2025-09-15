@@ -132,7 +132,7 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
             <div className="flex-shrink-0 ml-4">
               <div className="relative">
                 <div 
-                  className={`w-12 h-12 bg-instagram-gradient rounded-full flex items-center justify-center animate-pulse-glow ${url ? 'cursor-pointer hover:scale-110' : ''} transition-transform duration-200`}
+                  className={`w-12 h-12 bg-instagram-gradient rounded-full flex items-center justify-center ${url ? 'cursor-pointer hover:scale-110' : ''} transition-transform duration-200`}
                   onClick={url ? handleClearInput : undefined}
                   data-testid={url ? "button-clear" : "icon-search"}
                 >
