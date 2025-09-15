@@ -838,43 +838,19 @@ export class InstagramService {
           throw new Error('No story media found; it may be private, expired or requires login. Try adding IG_SESSIONID environment variable for private stories.');
         }
       } else if (contentType === 'reel' || contentType === 'igtv') {
-        // For videos, try multiple fallback strategies
+        // For videos, MUST have actual video URLs - no fallback to images
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
         } else {
-          console.warn(`No video URLs found for ${contentType}. Trying fallbacks...`);
-          
-          // Fallback 1: Check og:video
-          if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('.mp4') || ogVideo.includes('cdninstagram'))) {
+          console.warn(`No video URLs found for ${contentType}. Extracted:`, extractedData.allUrls);
+          // Only try og:video if it's actually a video file
+          if (ogVideo && !ogVideo.includes('blob:') && ogVideo.includes('.mp4') && ogVideo.includes('cdninstagram')) {
             mediaUrls = [ogVideo];
-            console.log('Using og:video as fallback');
-          } 
-          // Fallback 2: Use high-quality image as placeholder (thumbnail/poster)
-          else if (ogImage && ogImage.includes('cdninstagram')) {
-            // For failed video extraction, provide the thumbnail as a fallback
-            // This allows the user to at least see the content preview
-            mediaUrls = [ogImage];
-            console.log('Using high-quality thumbnail as fallback for failed video extraction');
-          }
-          // Fallback 3: Try any valid-looking URLs from extracted data
-          else if (extractedData.allUrls.length > 0) {
-            const potentialVideos = extractedData.allUrls.filter(url => 
-              url.includes('.mp4') || url.includes('cdninstagram') && url.includes('video')
-            );
-            if (potentialVideos.length > 0) {
-              mediaUrls = potentialVideos.slice(0, 1);
-              console.log('Using potential video URL from all extracted URLs');
-            }
-          }
-          
-          // If all fallbacks fail, still don't throw error - provide limited functionality
-          if (mediaUrls.length === 0) {
-            console.warn(`All extraction methods failed for ${contentType}. This content may be private, geo-restricted, or require login.`);
-            // Instead of throwing error, provide a graceful degradation
-            mediaUrls = [ogImage || ''].filter(Boolean);
-            if (mediaUrls.length === 0) {
-              throw new Error('Content unavailable - may be private, expired, or geo-restricted. Please try a different URL.');
-            }
+            console.log('Using og:video as fallback - actual video file');
+          } else {
+            // NO THUMBNAIL FALLBACKS FOR VIDEOS - better to fail than give user cropped images
+            console.error(`Failed to extract video URLs for ${contentType}. Available URLs:`, extractedData.allUrls);
+            throw new Error('Unable to extract video content. This reel may be private, geo-restricted, or use a format we cannot currently access. Please try a different URL.');
           }
         }
       } else {
