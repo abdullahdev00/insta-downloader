@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Download, Loader2, Check } from 'lucide-react';
+import { Search, Download, Loader2, Check, Clipboard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -35,6 +35,25 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
   const handleInputChange = (value: string) => {
     setUrl(value);
     setIsValid(validateInstagramUrl(value));
+  };
+
+  const handleClipboardPaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) {
+        handleInputChange(text);
+        toast({
+          title: "URL Pasted! 📋",
+          description: "URL has been pasted from clipboard",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Clipboard Error",
+        description: "Please paste the URL manually or check clipboard permissions",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleDownload = async () => {
@@ -123,6 +142,18 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
               data-testid="input-instagram-url"
             />
             
+            {/* Clipboard Button - Shows only on small screens when input is empty */}
+            {!url && (
+              <Button
+                onClick={handleClipboardPaste}
+                size="lg"
+                className="mr-2 h-14 px-4 sm:hidden bg-primary/20 hover:bg-primary/30 border border-primary/30 backdrop-blur-xl text-primary rounded-full font-semibold transition-all duration-300 transform hover:scale-105"
+                data-testid="button-clipboard"
+              >
+                <Clipboard className="w-5 h-5" />
+              </Button>
+            )}
+
             {/* Download Button - Responsive: icon only on small screens */}
             <Button
               onClick={handleDownload}
