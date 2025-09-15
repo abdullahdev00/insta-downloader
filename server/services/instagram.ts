@@ -24,6 +24,7 @@ export class InstagramService {
     if (!this.browser) {
       this.browser = await puppeteer.launch({
         headless: true,
+        executablePath: '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -32,7 +33,10 @@ export class InstagramService {
           '--no-first-run',
           '--no-zygote',
           '--single-process',
-          '--disable-gpu'
+          '--disable-gpu',
+          '--disable-extensions',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor'
         ]
       });
     }
@@ -80,15 +84,15 @@ export class InstagramService {
       // Wait for content to load
       await new Promise(resolve => setTimeout(resolve, 3000));
 
-      const metadata = await page.evaluate((originalUrl) => {
+      const metadata = await page.evaluate(function(originalUrl) {
         // Extract metadata from the page
-        const scripts = document.querySelectorAll('script[type="application/ld+json"]');
-        let jsonData = null;
+        var scripts = document.querySelectorAll('script[type="application/ld+json"]');
+        var jsonData = null;
         
-        for (let i = 0; i < scripts.length; i++) {
-          const script = scripts[i];
+        for (var i = 0; i < scripts.length; i++) {
+          var script = scripts[i];
           try {
-            const data = JSON.parse(script.textContent || '');
+            var data = JSON.parse(script.textContent || '');
             if (data['@type'] === 'MediaObject' || data.mainEntityOfPage) {
               jsonData = data;
               break;
@@ -99,45 +103,45 @@ export class InstagramService {
         }
 
         // Get Open Graph meta tags
-        const getMetaContent = (property: string) => {
-          const meta = document.querySelector(`meta[property="${property}"], meta[name="${property}"]`);
-          return meta?.getAttribute('content') || '';
-        };
+        function getMetaContent(property: string) {
+          var meta = document.querySelector('meta[property="' + property + '"], meta[name="' + property + '"]');
+          return meta ? meta.getAttribute('content') || '' : '';
+        }
 
         // Extract basic info
-        const title = getMetaContent('og:title') || document.title;
-        const description = getMetaContent('og:description');
-        const image = getMetaContent('og:image');
+        var title = getMetaContent('og:title') || document.title;
+        var description = getMetaContent('og:description');
+        var image = getMetaContent('og:image');
         
         // Try to extract username from title or URL
-        const usernameMatch = title.match(/^(.+?)\s+on\s+Instagram/) || 
-                             title.match(/@(\w+)/) ||
-                             originalUrl.match(/instagram\.com\/([^\/]+)/);
-        const username = usernameMatch ? usernameMatch[1] : 'instagram_user';
+        var usernameMatch = title.match(/^(.+?)\s+on\s+Instagram/) || 
+                           title.match(/@(\w+)/) ||
+                           originalUrl.match(/instagram\.com\/([^\/]+)/);
+        var username = usernameMatch ? usernameMatch[1] : 'instagram_user';
 
         // Detect content type from URL
-        let type: 'post' | 'reel' | 'story' | 'igtv' = 'post';
+        var type = 'post';
         if (originalUrl.includes('/reel/')) type = 'reel';
         else if (originalUrl.includes('/stories/')) type = 'story';
         else if (originalUrl.includes('/tv/')) type = 'igtv';
 
         // Try to find video/image URLs in the page
-        const mediaUrls: string[] = [];
-        const videos = document.querySelectorAll('video source, video');
-        const images = document.querySelectorAll('img[src*="instagram"]');
+        var mediaUrls = [];
+        var videos = document.querySelectorAll('video source, video');
+        var images = document.querySelectorAll('img[src*="instagram"]');
         
-        for (let i = 0; i < videos.length; i++) {
-          const video = videos[i];
-          const src = video.getAttribute('src');
+        for (var i = 0; i < videos.length; i++) {
+          var video = videos[i];
+          var src = video.getAttribute('src');
           if (src && !src.includes('data:')) {
             mediaUrls.push(src);
           }
         }
 
         if (mediaUrls.length === 0) {
-          for (let i = 0; i < images.length; i++) {
-            const img = images[i];
-            const src = img.getAttribute('src');
+          for (var i = 0; i < images.length; i++) {
+            var img = images[i];
+            var src = img.getAttribute('src');
             if (src && !src.includes('data:') && src.includes('instagram')) {
               mediaUrls.push(src);
             }
@@ -145,11 +149,11 @@ export class InstagramService {
         }
 
         return {
-          type,
+          type: type,
           username: username.replace('@', ''),
           caption: description,
           thumbnail: image,
-          mediaUrls,
+          mediaUrls: mediaUrls,
           likes: Math.floor(Math.random() * 100000), // Placeholder
           comments: Math.floor(Math.random() * 1000),
           views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,
