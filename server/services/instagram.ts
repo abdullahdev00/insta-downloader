@@ -107,23 +107,67 @@ export class InstagramService {
       const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
       const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
 
-      // Try to extract video URLs from page
-      const videoUrls = await page.evaluate(() => {
-        const videos = [];
-        // Look for video elements
-        document.querySelectorAll('video').forEach(video => {
-          if (video.src && !video.src.includes('data:')) {
-            videos.push(video.src);
+      // Set up request interception to capture media URLs
+      const interceptedUrls: string[] = [];
+      await page.setRequestInterception(true);
+      
+      page.on('request', (request) => {
+        const url = request.url();
+        // Capture video and high-quality image URLs
+        if ((url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) && 
+            (url.includes('cdninstagram.com') || url.includes('fbcdn.net'))) {
+          // Avoid low quality thumbnails, prefer larger media
+          if (!url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320')) {
+            interceptedUrls.push(url);
           }
-          // Check source elements
-          video.querySelectorAll('source').forEach(source => {
-            if (source.src && !source.src.includes('data:')) {
-              videos.push(source.src);
-            }
-          });
+        }
+        request.continue();
+      });
+      
+      // Wait longer for dynamic content and media to load
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      // Extract additional URLs from page data
+      const extractedUrls = await page.evaluate(() => {
+        const urls: string[] = [];
+        
+        // Look for script tags containing Instagram data
+        const scripts = document.querySelectorAll('script');
+        scripts.forEach(script => {
+          const content = script.textContent || '';
+          // Look for video_url and display_url patterns in Instagram's data
+          const videoMatches = content.match(/"video_url":"([^"]+)"/g);
+          const imageMatches = content.match(/"display_url":"([^"]+)"/g);
+          
+          if (videoMatches) {
+            videoMatches.forEach(match => {
+              const url = match.replace('"video_url":"', '').replace('"', '').replace(/\\u0026/g, '&');
+              if (url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
+                urls.push(url);
+              }
+            });
+          }
+          
+          if (imageMatches) {
+            imageMatches.forEach(match => {
+              const url = match.replace('"display_url":"', '').replace('"', '').replace(/\\u0026/g, '&');
+              if (url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
+                // Prefer higher resolution images
+                if (!url.includes('_s150x150') && !url.includes('_s240x240')) {
+                  urls.push(url);
+                }
+              }
+            });
+          }
         });
-        return videos;
+        
+        return urls;
       }).catch(() => []);
+      
+      // Combine intercepted and extracted URLs, removing duplicates
+      const allUrls = Array.from(new Set([...interceptedUrls, ...extractedUrls]));
+      const videoUrls = allUrls.filter(url => url.includes('.mp4'));
+      const imageUrls = allUrls.filter(url => url.includes('.jpg') || url.includes('.jpeg'));
 
       // Process extracted data
       const type = this.detectContentType(url);
@@ -132,15 +176,32 @@ export class InstagramService {
                            url.match(/instagram\.com\/([^\/]+)/);
       const username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
 
-      // Use video URLs if available, otherwise use og:video or fallback to image
-      let mediaUrls = [];
-      if (videoUrls.length > 0) {
-        mediaUrls = videoUrls;
-      } else if (ogVideo) {
-        mediaUrls = [ogVideo];
-      } else if (ogImage) {
-        mediaUrls = [ogImage];
+      // Prioritize high-quality media URLs
+      let mediaUrls: string[] = [];
+      
+      if (type === 'reel' || type === 'igtv') {
+        // For videos, prefer extracted video URLs over og:video
+        if (videoUrls.length > 0) {
+          mediaUrls = videoUrls;
+        } else if (ogVideo && !ogVideo.includes('blob:')) {
+          mediaUrls = [ogVideo];
+        } else if (imageUrls.length > 0) {
+          // Use high-quality images if video not available
+          mediaUrls = imageUrls.slice(0, 1);
+        } else if (ogImage) {
+          mediaUrls = [ogImage];
+        }
       } else {
+        // For posts, prefer high-quality images
+        if (imageUrls.length > 0) {
+          mediaUrls = imageUrls;
+        } else if (ogImage) {
+          mediaUrls = [ogImage];
+        }
+      }
+      
+      // Fallback if no media found
+      if (mediaUrls.length === 0) {
         mediaUrls = ['https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=800&fit=crop'];
       }
 
