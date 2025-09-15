@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ParticleBackground from '@/components/ParticleBackground';
 import FloatingHeader from '@/components/FloatingHeader';
 import HeroSection from '@/components/HeroSection';
@@ -8,7 +8,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Eye, Grid } from 'lucide-react';
+import { Eye, Grid, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface DownloadedContent {
   id?: string;
@@ -30,8 +30,36 @@ export default function InstagramDownloader() {
   const [downloadedContent, setDownloadedContent] = useState<DownloadedContent[]>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [showAllModal, setShowAllModal] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  const scrollLeft = () => {
+    if (scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      const cardWidth = 320; // w-80 = 320px
+      const newPosition = Math.max(0, scrollPosition - cardWidth * 2);
+      container.scrollTo({ left: newPosition, behavior: 'smooth' });
+      setScrollPosition(newPosition);
+    }
+  };
+  
+  const scrollRight = () => {
+    if (scrollContainerRef.current) {
+      const container = scrollContainerRef.current;
+      const cardWidth = 320; // w-80 = 320px
+      const maxScroll = container.scrollWidth - container.clientWidth;
+      const newPosition = Math.min(maxScroll, scrollPosition + cardWidth * 2);
+      container.scrollTo({ left: newPosition, behavior: 'smooth' });
+      setScrollPosition(newPosition);
+    }
+  };
+  
+  const canScrollLeft = scrollPosition > 0;
+  const canScrollRight = scrollContainerRef.current ? 
+    scrollPosition < (scrollContainerRef.current.scrollWidth - scrollContainerRef.current.clientWidth) : 
+    downloadedContent.length > 6;
 
 
 
@@ -130,6 +158,15 @@ export default function InstagramDownloader() {
 
   return (
     <div className="min-h-screen bg-background relative overflow-x-hidden">
+      <style>{`
+        .scrollbar-hide {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       {/* Particle Background */}
       <ParticleBackground />
       
@@ -235,11 +272,11 @@ export default function InstagramDownloader() {
                   )}
                 </div>
               ) : (
-                /* Desktop View: 2 rows then horizontal scroll */
+                /* Desktop View: 2 rows with 3 columns max (6 items), then horizontal scroll */
                 <div className="space-y-6">
-                  {/* First 2 rows (8 items on xl:grid-cols-4) */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {downloadedContent.slice(0, 8).map((content, index) => (
+                  {/* First 2 rows (6 items max: 2 rows × 3 columns) */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {downloadedContent.slice(0, 6).map((content, index) => (
                       <ContentPreviewCard 
                         key={content.downloadId || index}
                         type={content.type}
@@ -258,28 +295,86 @@ export default function InstagramDownloader() {
                     ))}
                   </div>
                   
-                  {/* Horizontal scroll for remaining items */}
-                  {downloadedContent.length > 8 && (
+                  {/* Horizontal scroll for remaining items with navigation buttons */}
+                  {downloadedContent.length > 6 && (
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <h3 className="text-xl font-semibold">More Downloads</h3>
-                        <Dialog open={showAllModal} onOpenChange={setShowAllModal}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm" className="hover-elevate">
-                              <Eye className="w-4 h-4 mr-2" />
-                              View All ({downloadedContent.length})
+                        <div className="flex items-center gap-3">
+                          {/* Navigation Buttons */}
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={scrollLeft}
+                              disabled={!canScrollLeft}
+                              className="hover-elevate"
+                              data-testid="button-scroll-left"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
                             </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
-                            <DialogHeader>
-                              <DialogTitle className="text-2xl font-bold text-center">
-                                All Downloads ({downloadedContent.length})
-                              </DialogTitle>
-                            </DialogHeader>
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
-                              {downloadedContent.map((content, index) => (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={scrollRight}
+                              disabled={!canScrollRight}
+                              className="hover-elevate"
+                              data-testid="button-scroll-right"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </div>
+                          
+                          {/* View All Button */}
+                          <Dialog open={showAllModal} onOpenChange={setShowAllModal}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm" className="hover-elevate">
+                                <Eye className="w-4 h-4 mr-2" />
+                                View All ({downloadedContent.length})
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+                              <DialogHeader>
+                                <DialogTitle className="text-2xl font-bold text-center">
+                                  All Downloads ({downloadedContent.length})
+                                </DialogTitle>
+                              </DialogHeader>
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mt-6">
+                                {downloadedContent.map((content, index) => (
+                                  <ContentPreviewCard 
+                                    key={content.downloadId || index}
+                                    type={content.type}
+                                    thumbnail={content.thumbnail}
+                                    username={content.username}
+                                    avatar={content.avatar || ''}
+                                    likes={content.likes || 0}
+                                    comments={content.comments || 0}
+                                    views={content.views}
+                                    duration={content.duration}
+                                    caption={content.caption}
+                                    mediaCount={content.mediaCount}
+                                    status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
+                                    onDownload={() => handleFinalDownload(content)}
+                                  />
+                                ))}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                      
+                      {/* Horizontal scroll container */}
+                      <div className="relative">
+                        <div 
+                          ref={scrollContainerRef}
+                          className="overflow-x-auto pb-4 scrollbar-hide"
+                          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                          onScroll={(e) => setScrollPosition(e.currentTarget.scrollLeft)}
+                        >
+                          <div className="flex gap-6 w-max">
+                            {downloadedContent.slice(6).map((content, index) => (
+                              <div key={content.downloadId || (index + 6)} className="flex-none w-80">
                                 <ContentPreviewCard 
-                                  key={content.downloadId || index}
                                   type={content.type}
                                   thumbnail={content.thumbnail}
                                   username={content.username}
@@ -293,32 +388,9 @@ export default function InstagramDownloader() {
                                   status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
                                   onDownload={() => handleFinalDownload(content)}
                                 />
-                              ))}
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                      
-                      <div className="overflow-x-auto pb-4">
-                        <div className="flex gap-6 w-max">
-                          {downloadedContent.slice(8).map((content, index) => (
-                            <div key={content.downloadId || (index + 8)} className="flex-none w-80">
-                              <ContentPreviewCard 
-                                type={content.type}
-                                thumbnail={content.thumbnail}
-                                username={content.username}
-                                avatar={content.avatar || ''}
-                                likes={content.likes || 0}
-                                comments={content.comments || 0}
-                                views={content.views}
-                                duration={content.duration}
-                                caption={content.caption}
-                                mediaCount={content.mediaCount}
-                                status={content.status as 'processing' | 'completed' | 'failed' | 'pending' || 'completed'}
-                                onDownload={() => handleFinalDownload(content)}
-                              />
-                            </div>
-                          ))}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
