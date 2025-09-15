@@ -89,6 +89,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const filename = path.basename(download.filePath);
       const fileExtension = path.extname(filename).toLowerCase();
       
+      // Sanitize filename for HTTP header - remove or replace problematic characters
+      const sanitizedFilename = filename
+        .replace(/[^\w\-_\. ]/g, '_') // Replace non-alphanumeric chars (except dash, underscore, dot, space) with underscore
+        .replace(/\s+/g, '_') // Replace spaces with underscores
+        .substring(0, 100); // Limit length to prevent issues
+      
       // Set proper content type based on file extension
       let contentType = 'application/octet-stream';
       if (fileExtension === '.mp4') {
@@ -101,7 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Set proper headers for all devices, especially mobile
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Access-Control-Allow-Origin', '*');
       
