@@ -245,6 +245,7 @@ export class InstagramService {
       const ogDescription = $('meta[property="og:description"]').attr('content') || '';
       const ogImage = $('meta[property="og:image"]').attr('content') || '';
       const ogVideo = $('meta[property="og:video"]').attr('content') || '';
+      const ogVideoSecure = $('meta[property="og:video:secure_url"]').attr('content') || '';
 
       // Parse username
       let username = 'instagram_user';
@@ -389,6 +390,8 @@ export class InstagramService {
       if (contentType === 'reel' || contentType === 'igtv') {
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
+        } else if (ogVideoSecure && ogVideoSecure.includes('.mp4')) {
+          mediaUrls = [ogVideoSecure];
         } else if (ogVideo && ogVideo.includes('.mp4')) {
           mediaUrls = [ogVideo];
         } else {
