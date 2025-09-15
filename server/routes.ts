@@ -88,12 +88,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const filename = path.basename(download.filePath);
       const fileExtension = path.extname(filename).toLowerCase();
+      const baseName = path.basename(filename, fileExtension);
       
-      // Sanitize filename for HTTP header - remove or replace problematic characters
-      const sanitizedFilename = filename
-        .replace(/[^\w\-_\. ]/g, '_') // Replace non-alphanumeric chars (except dash, underscore, dot, space) with underscore
+      // Sanitize filename for safe download - preserve extension
+      const sanitizedBaseName = baseName
+        .replace(/[^\w\-_\. ]/g, '_') // Replace non-alphanumeric chars with underscore
         .replace(/\s+/g, '_') // Replace spaces with underscores
-        .substring(0, 100); // Limit length to prevent issues
+        .substring(0, 100); // Limit length but preserve extension
+      const sanitizedFilename = sanitizedBaseName + fileExtension;
       
       // Set proper content type based on file extension
       let contentType = 'application/octet-stream';
@@ -105,18 +107,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         contentType = 'image/png';
       }
       
-      // Set proper headers for all devices, especially mobile
+      // Set content type and cache control headers
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Content-Disposition', `attachment; filename="${sanitizedFilename}"`);
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Access-Control-Allow-Origin', '*');
       
-      // For mobile devices, ensure proper content length
-      const fs = await import('fs/promises');
-      const stats = await fs.stat(download.filePath);
-      res.setHeader('Content-Length', stats.size.toString());
-      
-      res.download(download.filePath, filename);
+      // Let res.download handle Content-Disposition and Content-Length properly
+      res.download(download.filePath, sanitizedFilename);
     } catch (error) {
       console.error("Error serving file:", error);
       res.status(500).json({ error: "Internal server error" });

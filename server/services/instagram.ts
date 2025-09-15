@@ -2,7 +2,7 @@ import puppeteer, { Browser, Page } from 'puppeteer';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { promises as fs } from 'fs';
-import path from 'path';
+import * as path from 'path';
 
 export interface InstagramMetadata {
   type: 'post' | 'reel' | 'story' | 'igtv';
@@ -104,29 +104,138 @@ export class InstagramService {
   }
 
 
-  // Fast HTML-first extraction method
+  // Modern Instagram JSON API method
   async extractMetadataFast(url: string): Promise<InstagramMetadata> {
-    const type = this.detectContentType(url);
+    const contentType = this.detectContentType(url);
     
     try {
-      console.log(`Trying fast HTML extraction for ${type}...`);
+      console.log(`Trying modern Instagram JSON API for ${contentType}...`);
       
-      const response = await axios.get(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-          'Sec-Fetch-Dest': 'document',
-          'Sec-Fetch-Mode': 'navigate',
-          'Sec-Fetch-Site': 'none',
-          'Cache-Control': 'no-cache'
-        },
-        timeout: 10000
-      });
+      // Extract shortcode from URL
+      const shortcodeMatch = url.match(/instagram\.com\/(?:[A-Za-z0-9_.]+\/)?(p|reels?|reel|stories)\/([A-Za-z0-9-_]+)/);
+      if (!shortcodeMatch) {
+        throw new Error('Could not extract shortcode from URL');
+      }
+      const shortcode = shortcodeMatch[2];
+      
+      // Try modern Instagram JSON endpoint first
+      let jsonData = null;
+      try {
+        const jsonResponse = await axios.get(`https://www.instagram.com/p/${shortcode}/?__a=1&__d=dis`, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111',
+            'Accept': 'application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'cross-site',
+            'Cache-Control': 'no-cache'
+          },
+          timeout: 10000
+        });
+        
+        if (jsonResponse.data && typeof jsonResponse.data === 'object') {
+          jsonData = jsonResponse.data;
+          console.log('Successfully extracted JSON data from Instagram API');
+        }
+      } catch (jsonError) {
+        console.log('JSON API failed, falling back to HTML scraping...');
+      }
+      
+      // Process JSON data if available (modern API)
+      if (jsonData) {
+        const items = jsonData.items || [jsonData];
+        const item = items[0] || jsonData;
+        
+        let username = 'instagram_user';
+        let caption = '';
+        let thumbnail = '';
+        let videoUrls: string[] = [];
+        let imageUrls: string[] = [];
+        
+        // Extract metadata from JSON structure
+        if (item.user && item.user.username) {
+          username = item.user.username;
+        }
+        
+        if (item.caption && item.caption.text) {
+          caption = item.caption.text;
+        }
+        
+        // Extract video URLs from JSON (2024-2025 structure)
+        if (item.video_versions && Array.isArray(item.video_versions)) {
+          item.video_versions.forEach((version: any) => {
+            if (version.url && version.url.includes('.mp4')) {
+              videoUrls.push(version.url);
+            }
+          });
+        }
+        
+        // Extract image URLs from JSON
+        if (item.image_versions2 && item.image_versions2.candidates) {
+          item.image_versions2.candidates
+            .sort((a: any, b: any) => (b.width || 0) - (a.width || 0)) // Sort by width, highest first
+            .forEach((candidate: any) => {
+              if (candidate.url) {
+                imageUrls.push(candidate.url);
+              }
+            });
+        }
+        
+        // Set thumbnail
+        if (imageUrls.length > 0) {
+          thumbnail = imageUrls[0];
+        } else if (item.image_versions && item.image_versions.candidates && item.image_versions.candidates[0]) {
+          thumbnail = item.image_versions.candidates[0].url;
+        }
+        
+        // Determine media URLs based on content type
+        let mediaUrls: string[] = [];
+        const contentType = this.detectContentType(url);
+        if (contentType === 'reel' || contentType === 'igtv') {
+          mediaUrls = videoUrls.length > 0 ? videoUrls : [];
+        } else {
+          mediaUrls = imageUrls.length > 0 ? imageUrls : [];
+        }
+        
+        if (mediaUrls.length > 0) {
+          console.log(`JSON API extraction successful! Found ${mediaUrls.length} media URLs`);
+          return {
+            type: contentType,
+            username,
+            caption: caption || 'Instagram content',
+            thumbnail,
+            mediaUrls,
+            likes: item.like_count || 0,
+            comments: item.comment_count || 0,
+            views: item.view_count || (contentType === 'reel' || contentType === 'igtv' ? 0 : undefined),
+            duration: contentType === 'reel' || contentType === 'igtv' ? '0:00' : undefined,
+            mediaCount: mediaUrls.length
+          };
+        }
+      }
+      
+      // Fallback to HTML scraping
+      if (!jsonData) {
+        const response = await axios.get(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'no-cache'
+          },
+          timeout: 10000
+        });
 
       const $ = cheerio.load(response.data);
       
@@ -150,13 +259,19 @@ export class InstagramService {
       $('script').each((_, script) => {
         const content = $(script).html() || '';
         
-        // Extract video URLs with multiple patterns
+        // Extract video URLs with multiple patterns (2024-2025 updated)
         const videoPatterns = [
+          // Modern Instagram patterns (2024-2025)
+          /"video_versions"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"video_versions"\s*:\s*\[[^\]]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Legacy patterns (still in use)
           /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
           /"src"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
           /videoUrl['"']?\s*:\s*['"]([^'"]*\.mp4[^'"]*)['"]?/g,
-          /"video_versions"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
-          /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
+          /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Additional 2024-2025 patterns
+          /"url"\s*:\s*"([^"]*\.mp4[^"]*)"[^}]*"type"\s*:\s*"video"/g,
+          /"dash_manifest"\s*:\s*"[^"]*"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
         ];
         
         videoPatterns.forEach(pattern => {
@@ -273,7 +388,7 @@ export class InstagramService {
       // Determine final media URLs based on content type
       let mediaUrls: string[] = [];
       
-      if (type === 'reel' || type === 'igtv') {
+      if (contentType === 'reel' || contentType === 'igtv') {
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
         } else if (ogVideo && ogVideo.includes('.mp4')) {
@@ -297,22 +412,23 @@ export class InstagramService {
       let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
       
       // Only require thumbnail for image posts (posts), not for videos (reels/igtv)
-      if (type === 'post' && !thumbnail) {
+      if (contentType === 'post' && !thumbnail) {
         throw new Error('No thumbnail found for image post');
       }
 
       return {
-        type,
+        type: contentType,
         username,
         caption: ogDescription || 'Instagram content',
         thumbnail,
         mediaUrls,
         likes: 0,
         comments: 0,
-        views: type === 'reel' || type === 'igtv' ? 0 : undefined,
-        duration: type === 'reel' || type === 'igtv' ? '0:00' : undefined,
+        views: contentType === 'reel' || contentType === 'igtv' ? 0 : undefined,
+        duration: contentType === 'reel' || contentType === 'igtv' ? '0:00' : undefined,
         mediaCount: mediaUrls.length
       };
+      }
 
     } catch (error: any) {
       console.log('Fast extraction failed, falling back to Puppeteer:', error.message);
@@ -329,15 +445,15 @@ export class InstagramService {
     const normalizedUrl = this.normalizeUrl(url);
     const cacheKey = normalizedUrl;
     const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+    if (cached && cached.timestamp && Date.now() - cached.timestamp < this.CACHE_TTL) {
       console.log('Returning cached metadata for:', normalizedUrl);
       return cached.data;
     }
 
-    const type = this.detectContentType(url);
+    const contentType = this.detectContentType(url);
     
     // For stories, always use Puppeteer as they need authentication/session handling
-    if (type !== 'story') {
+    if (contentType !== 'story') {
       try {
         const fastResult = await this.extractMetadataFast(url);
         
@@ -362,9 +478,9 @@ export class InstagramService {
       page = await browser.newPage();
 
       // Block unnecessary resources for faster loading (except for stories)
-      if (type !== 'story') {
+      if (contentType !== 'story') {
         await page.setRequestInterception(true);
-        page.on('request', (req) => {
+        page.on('request', (req: any) => {
           const resourceType = req.resourceType();
           const url = req.url();
           
@@ -381,7 +497,7 @@ export class InstagramService {
       await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1 Instagram 301.0.0.41.111');
       
       // For stories, add optional authentication and use mobile site
-      if (type === 'story') {
+      if (contentType === 'story') {
         // Add session cookie if available for private stories
         if (process.env.IG_SESSIONID) {
           await page.setCookie({
@@ -403,7 +519,7 @@ export class InstagramService {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 6000 });
       
       // Wait for essential content only, no fixed delays
-      if (type === 'story') {
+      if (contentType === 'story') {
         await new Promise(resolve => setTimeout(resolve, 1500));
       } else {
         // For reels/posts, wait for scripts to load
@@ -412,10 +528,10 @@ export class InstagramService {
 
       // Extract basic info from page using simple evaluation
       const title = await page.title();
-      const ogTitle = await page.$eval('meta[property="og:title"]', el => el.getAttribute('content')).catch(() => '');
-      const ogDescription = await page.$eval('meta[property="og:description"]', el => el.getAttribute('content')).catch(() => '');
-      const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
-      const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
+      const ogTitle = await page.$eval('meta[property="og:title"]', (el: any) => el.getAttribute('content')).catch(() => '');
+      const ogDescription = await page.$eval('meta[property="og:description"]', (el: any) => el.getAttribute('content')).catch(() => '');
+      const ogImage = await page.$eval('meta[property="og:image"]', (el: any) => el.getAttribute('content')).catch(() => '');
+      const ogVideo = await page.$eval('meta[property="og:video"]', (el: any) => el.getAttribute('content')).catch(() => '');
 
       // Request interception remains active for resource blocking
       
@@ -656,9 +772,9 @@ export class InstagramService {
 
       // Process extracted data and fix username parsing for stories
       let username = 'instagram_user';
-      if (type === 'story') {
+      if (contentType === 'story') {
         const storyMatch = url.match(/instagram\.com\/stories\/([^\/]+)/);
-        username = storyMatch ? storyMatch[1] : 'instagram_user';
+        username = storyMatch && storyMatch[1] ? storyMatch[1] : 'instagram_user';
       } else {
         const usernameMatch = (ogTitle || title).match(/^(.+?)\s+on\s+Instagram/) || 
                              (ogTitle || title).match(/@(\w+)/) ||
@@ -669,9 +785,9 @@ export class InstagramService {
       // Prioritize high-quality media URLs based on content type
       let mediaUrls: string[] = [];
       
-      console.log(`Extracted URLs for ${type}:`, { videoUrls, imageUrls, ogVideo, ogImage });
+      console.log(`Extracted URLs for ${contentType}:`, { videoUrls, imageUrls, ogVideo, ogImage });
       
-      if (type === 'story') {
+      if (contentType === 'story') {
         // For stories, prefer videos first, then images
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
@@ -685,18 +801,18 @@ export class InstagramService {
           console.warn(`No story media found. Extracted URLs: videos=${videoUrls.length}, images=${imageUrls.length}`);
           throw new Error('No story media found; it may be private, expired or requires login. Try adding IG_SESSIONID environment variable for private stories.');
         }
-      } else if (type === 'reel' || type === 'igtv') {
+      } else if (contentType === 'reel' || contentType === 'igtv') {
         // For videos, MUST have video URLs - no fallback to images for video content
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
         } else {
-          console.warn(`No video URLs found for ${type}. Extracted:`, extractedData.allUrls);
+          console.warn(`No video URLs found for ${contentType}. Extracted:`, extractedData.allUrls);
           // Last resort: try og:video if it exists and is not a blob URL
           if (ogVideo && !ogVideo.includes('blob:') && ogVideo.includes('.mp4')) {
             mediaUrls = [ogVideo];
           } else {
             // This should not happen for video content - log the issue
-            console.error(`Failed to extract video URLs for ${type}. Available URLs:`, extractedData.allUrls);
+            console.error(`Failed to extract video URLs for ${contentType}. Available URLs:`, extractedData.allUrls);
             throw new Error('No video content found - may be private or unavailable');
           }
         }
@@ -707,35 +823,35 @@ export class InstagramService {
         } else if (ogImage && !ogImage.includes('blob:')) {
           mediaUrls = [ogImage];
         } else {
-          console.warn(`No image URLs found for ${type}`);
+          console.warn(`No image URLs found for ${contentType}`);
           throw new Error('No image content found - may be private or unavailable');
         }
       }
       
-      console.log(`Final media URLs for ${type}:`, mediaUrls);
+      console.log(`Final media URLs for ${contentType}:`, mediaUrls);
 
       // Set thumbnail with fallbacks for Puppeteer path too
       let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
       
       // Only require thumbnail for image posts, not for videos
-      if (type === 'post' && !thumbnail) {
+      if (contentType === 'post' && !thumbnail) {
         throw new Error('No thumbnail found for image post');
       }
 
       const metadata = {
-        type,
+        type: contentType,
         username,
         caption: ogDescription || 'Instagram content',
         thumbnail,
         mediaUrls,
         likes: 0,
         comments: 0,
-        views: type === 'reel' || type === 'igtv' ? 0 : undefined,
-        duration: type === 'reel' || type === 'igtv' ? '0:00' : undefined,
+        views: contentType === 'reel' || contentType === 'igtv' ? 0 : undefined,
+        duration: contentType === 'reel' || contentType === 'igtv' ? '0:00' : undefined,
         mediaCount: mediaUrls.length
       };
 
-      console.log(`Successfully extracted metadata for ${type}:`, {
+      console.log(`Successfully extracted metadata for ${contentType}:`, {
         username,
         mediaCount: mediaUrls.length,
         firstMediaUrl: mediaUrls[0]?.substring(0, 100) + '...'
@@ -751,8 +867,6 @@ export class InstagramService {
 
     } catch (error: any) {
       console.error('Error extracting Instagram metadata:', error);
-      
-      const type = this.detectContentType(url);
       
       // Don't provide fallback mock data - throw error for proper handling
       throw new Error(`Failed to extract Instagram content: ${error.message}`);
