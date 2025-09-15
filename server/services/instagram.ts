@@ -105,6 +105,25 @@ export class InstagramService {
       const ogTitle = await page.$eval('meta[property="og:title"]', el => el.getAttribute('content')).catch(() => '');
       const ogDescription = await page.$eval('meta[property="og:description"]', el => el.getAttribute('content')).catch(() => '');
       const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
+      const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
+
+      // Try to extract video URLs from page
+      const videoUrls = await page.evaluate(() => {
+        const videos = [];
+        // Look for video elements
+        document.querySelectorAll('video').forEach(video => {
+          if (video.src && !video.src.includes('data:')) {
+            videos.push(video.src);
+          }
+          // Check source elements
+          video.querySelectorAll('source').forEach(source => {
+            if (source.src && !source.src.includes('data:')) {
+              videos.push(source.src);
+            }
+          });
+        });
+        return videos;
+      }).catch(() => []);
 
       // Process extracted data
       const type = this.detectContentType(url);
@@ -113,12 +132,24 @@ export class InstagramService {
                            url.match(/instagram\.com\/([^\/]+)/);
       const username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
 
+      // Use video URLs if available, otherwise use og:video or fallback to image
+      let mediaUrls = [];
+      if (videoUrls.length > 0) {
+        mediaUrls = videoUrls;
+      } else if (ogVideo) {
+        mediaUrls = [ogVideo];
+      } else if (ogImage) {
+        mediaUrls = [ogImage];
+      } else {
+        mediaUrls = ['https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=800&fit=crop'];
+      }
+
       const metadata = {
         type,
         username,
         caption: ogDescription || 'Instagram content',
         thumbnail: ogImage || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
-        mediaUrls: ['https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=800&fit=crop'],
+        mediaUrls,
         likes: Math.floor(Math.random() * 100000),
         comments: Math.floor(Math.random() * 1000),
         views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,

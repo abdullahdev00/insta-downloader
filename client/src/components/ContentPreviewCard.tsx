@@ -135,7 +135,7 @@ export default function ContentPreviewCard({
 
   return (
     <div 
-      className="group relative bg-card rounded-3xl overflow-hidden border border-card-border shadow-lg hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-1"
+      className="group relative bg-card rounded-lg overflow-hidden border border-card-border shadow-sm hover:shadow-md transition-all duration-300 transform hover:-translate-y-0.5"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       data-testid={`card-preview-${type}-${username}`}
@@ -200,30 +200,30 @@ export default function ContentPreviewCard({
       </div>
 
       {/* Content Footer */}
-      <div className="p-4">
+      <div className="p-3">
         {/* User Info */}
-        <div className="flex items-center gap-3 mb-3">
+        <div className="flex items-center gap-2 mb-2">
           <img 
             src={avatar} 
             alt={username}
-            className="w-8 h-8 rounded-full border-2 border-primary/20"
+            className="w-6 h-6 rounded-full border border-primary/20"
           />
-          <span className="font-semibold text-sm text-foreground">{username}</span>
+          <span className="font-medium text-xs text-foreground">{username}</span>
         </div>
 
         {/* Stats */}
-        <div className="flex items-center gap-4 text-muted-foreground text-sm">
+        <div className="flex items-center gap-3 text-muted-foreground text-xs">
           <div className="flex items-center gap-1">
-            <Heart className="w-4 h-4 text-red-500" />
+            <Heart className="w-3 h-3 text-red-500" />
             <span>{formatNumber(likes)}</span>
           </div>
           <div className="flex items-center gap-1">
-            <MessageCircle className="w-4 h-4" />
+            <MessageCircle className="w-3 h-3" />
             <span>{formatNumber(comments)}</span>
           </div>
           {views && (
             <div className="flex items-center gap-1">
-              <Eye className="w-4 h-4" />
+              <Eye className="w-3 h-3" />
               <span>{formatNumber(views)}</span>
             </div>
           )}
@@ -231,7 +231,7 @@ export default function ContentPreviewCard({
 
         {/* Caption */}
         {caption && (
-          <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
             {caption}
           </p>
         )}
