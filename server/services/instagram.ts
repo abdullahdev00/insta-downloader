@@ -19,19 +19,26 @@ export interface InstagramMetadata {
 
 export class InstagramService {
   private browser: Browser | null = null;
+  private cache = new Map<string, { data: InstagramMetadata; timestamp: number }>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
   async initBrowser() {
     try {
-      // Always create a fresh browser instance
+      // Reuse existing browser if still connected
+      if (this.browser && this.browser.isConnected()) {
+        return this.browser;
+      }
+
+      // Close old browser if exists but disconnected
       if (this.browser) {
         try {
           await this.browser.close();
         } catch (e) {
           // Ignore close errors
         }
-        this.browser = null;
       }
 
+      console.log('Launching new browser instance...');
       this.browser = await puppeteer.launch({
         headless: true,
         executablePath: '/nix/store/qa9cnw4v5xkxyip6mb9kxqfq1z4x2dx1-chromium-138.0.7204.100/bin/chromium',
@@ -46,7 +53,10 @@ export class InstagramService {
           '--disable-gpu',
           '--disable-extensions',
           '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
+          '--disable-features=VizDisplayCompositor',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
         ]
       });
       return this.browser;
@@ -84,6 +94,14 @@ export class InstagramService {
   async extractMetadata(url: string): Promise<InstagramMetadata> {
     if (!this.validateInstagramUrl(url)) {
       throw new Error('Invalid Instagram URL');
+    }
+
+    // Check cache first
+    const cacheKey = url;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      console.log('Returning cached metadata for:', url);
+      return cached.data;
     }
 
     const type = this.detectContentType(url);
@@ -136,10 +154,10 @@ export class InstagramService {
         });
       }
       
-      await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
       
-      // Wait longer for stories to load
-      const waitTime = type === 'story' ? 7000 : 3000;
+      // Optimized wait times - much faster
+      const waitTime = type === 'story' ? 2000 : 1000;
       await new Promise(resolve => setTimeout(resolve, waitTime));
 
       // Extract basic info from page using simple evaluation
@@ -152,11 +170,11 @@ export class InstagramService {
       // Disable request interception for simpler approach
       await page.setRequestInterception(false);
       
-      // Wait for content to load and try multiple extraction methods
-      await page.waitForSelector('video, img[src*="cdninstagram"], img[src*="fbcdn"]', { timeout: 10000 }).catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Wait for content to load - optimized timing
+      await page.waitForSelector('video, img[src*="cdninstagram"], img[src*="fbcdn"]', { timeout: 5000 }).catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Extract media URLs using multiple methods
+      // Extract media URLs using streamlined methods
       const extractedData = await page.evaluate(() => {
         const result = {
           videoUrls: [] as string[],
@@ -164,19 +182,13 @@ export class InstagramService {
           allUrls: [] as string[]
         };
         
-        // Method 1: Check video elements directly
-        document.querySelectorAll('video').forEach(video => {
-          if (video.src && (video.src.includes('cdninstagram') || video.src.includes('fbcdn'))) {
-            result.videoUrls.push(video.src);
-            result.allUrls.push(video.src);
+        // Method 1: Quick video element check
+        document.querySelectorAll('video, source').forEach(element => {
+          const src = element.getAttribute('src');
+          if (src && (src.includes('cdninstagram') || src.includes('fbcdn')) && src.includes('.mp4')) {
+            result.videoUrls.push(src);
+            result.allUrls.push(src);
           }
-          // Check source elements within video
-          video.querySelectorAll('source').forEach(source => {
-            if (source.src && (source.src.includes('cdninstagram') || source.src.includes('fbcdn'))) {
-              result.videoUrls.push(source.src);
-              result.allUrls.push(source.src);
-            }
-          });
         });
         
         // Method 1.5: Check preload links for stories
@@ -194,21 +206,19 @@ export class InstagramService {
           }
         });
         
-        // Method 2: Parse all script tags for embedded data
+        // Method 2: Streamlined script parsing
         document.querySelectorAll('script').forEach(script => {
           const content = script.textContent || '';
           
-          // Look for video_url patterns
-          const videoMatches = content.match(/"video_url"\s*:\s*"([^"]+)"/g);
-          if (videoMatches) {
-            videoMatches.forEach(match => {
-              let url = match.replace(/"video_url"\s*:\s*"/, '').replace(/"$/, '');
-              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
-                result.videoUrls.push(url);
-                result.allUrls.push(url);
-              }
-            });
+          // Quick video URL extraction
+          const videoPattern = /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g;
+          let match;
+          while ((match = videoPattern.exec(content)) !== null) {
+            let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            if ((url.includes('cdninstagram') || url.includes('fbcdn')) && !url.includes('/rsrc.php/')) {
+              result.videoUrls.push(url);
+              result.allUrls.push(url);
+            }
           }
           
           // Look for GraphQL video data
@@ -241,21 +251,16 @@ export class InstagramService {
             });
           }
           
-          // Look for display_url for high-quality images
-          const imageMatches = content.match(/"display_url"\s*:\s*"([^"]+)"/g);
-          if (imageMatches) {
-            imageMatches.forEach(match => {
-              let url = match.replace(/"display_url"\s*:\s*"/, '').replace(/"$/, '');
-              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                  (url.includes('.jpg') || url.includes('.jpeg')) &&
-                  !url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320') &&
-                  !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
-                  !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
-                result.imageUrls.push(url);
-                result.allUrls.push(url);
-              }
-            });
+          // Quick image URL extraction
+          const imagePattern = /"display_url"\s*:\s*"([^"]*\.(?:jpg|jpeg)[^"]*)"/g;
+          let imgMatch;
+          while ((imgMatch = imagePattern.exec(content)) !== null) {
+            let url = imgMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
+                !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
+              result.imageUrls.push(url);
+              result.allUrls.push(url);
+            }
           }
           
           // Look for story-specific image URLs
@@ -426,6 +431,12 @@ export class InstagramService {
         mediaCount: mediaUrls.length,
         firstMediaUrl: mediaUrls[0]?.substring(0, 100) + '...'
       });
+
+      // Cache the successful result
+      this.cache.set(cacheKey, { 
+        data: metadata as InstagramMetadata, 
+        timestamp: Date.now() 
+      });
       
       return metadata as InstagramMetadata;
 
@@ -453,13 +464,12 @@ export class InstagramService {
         mediaCount: 1
       };
     } finally {
-      // CRITICAL: Always close resources
+      // Only close the page, keep browser persistent for reuse
       try {
         if (page) await page.close();
-        if (browser) await browser.close();
-        this.browser = null;
+        // Don't close the browser - keep it for reuse!
       } catch (closeError) {
-        console.error('Error closing Puppeteer resources:', closeError);
+        console.error('Error closing page:', closeError);
       }
     }
   }
