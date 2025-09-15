@@ -200,11 +200,20 @@ export default function ContentPreviewCard({
       <div className="p-3">
         {/* User Info */}
         <div className="flex items-center gap-2 mb-2">
-          <img 
-            src={avatar} 
-            alt={username}
-            className="w-6 h-6 rounded-full border border-primary/20"
-          />
+          {avatar ? (
+            <img 
+              src={avatar} 
+              alt={username}
+              className="w-6 h-6 rounded-full border border-primary/20"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+              }}
+            />
+          ) : null}
+          <div className={`w-6 h-6 rounded-full border border-primary/20 bg-instagram-gradient flex items-center justify-center text-white text-xs font-bold ${avatar ? 'hidden' : ''}`}>
+            {username.charAt(0).toUpperCase()}
+          </div>
           <span className="font-medium text-xs text-foreground">{username}</span>
         </div>
 
