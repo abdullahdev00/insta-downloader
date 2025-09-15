@@ -107,67 +107,100 @@ export class InstagramService {
       const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
       const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
 
-      // Set up request interception to capture media URLs
-      const interceptedUrls: string[] = [];
-      await page.setRequestInterception(true);
+      // Disable request interception for simpler approach
+      await page.setRequestInterception(false);
       
-      page.on('request', (request) => {
-        const url = request.url();
-        // Capture video and high-quality image URLs
-        if ((url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) && 
-            (url.includes('cdninstagram.com') || url.includes('fbcdn.net'))) {
-          // Avoid low quality thumbnails, prefer larger media
-          if (!url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320')) {
-            interceptedUrls.push(url);
-          }
-        }
-        request.continue();
-      });
+      // Wait for content to load and try multiple extraction methods
+      await page.waitForSelector('video, img[src*="cdninstagram"], img[src*="fbcdn"]', { timeout: 10000 }).catch(() => {});
+      await new Promise(resolve => setTimeout(resolve, 3000));
       
-      // Wait longer for dynamic content and media to load
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      
-      // Extract additional URLs from page data
-      const extractedUrls = await page.evaluate(() => {
-        const urls: string[] = [];
+      // Extract media URLs using multiple methods
+      const extractedData = await page.evaluate(() => {
+        const result = {
+          videoUrls: [] as string[],
+          imageUrls: [] as string[],
+          allUrls: [] as string[]
+        };
         
-        // Look for script tags containing Instagram data
-        const scripts = document.querySelectorAll('script');
-        scripts.forEach(script => {
+        // Method 1: Check video elements directly
+        document.querySelectorAll('video').forEach(video => {
+          if (video.src && (video.src.includes('cdninstagram') || video.src.includes('fbcdn'))) {
+            result.videoUrls.push(video.src);
+            result.allUrls.push(video.src);
+          }
+          // Check source elements within video
+          video.querySelectorAll('source').forEach(source => {
+            if (source.src && (source.src.includes('cdninstagram') || source.src.includes('fbcdn'))) {
+              result.videoUrls.push(source.src);
+              result.allUrls.push(source.src);
+            }
+          });
+        });
+        
+        // Method 2: Parse all script tags for embedded data
+        document.querySelectorAll('script').forEach(script => {
           const content = script.textContent || '';
-          // Look for video_url and display_url patterns in Instagram's data
-          const videoMatches = content.match(/"video_url":"([^"]+)"/g);
-          const imageMatches = content.match(/"display_url":"([^"]+)"/g);
           
+          // Look for video_url patterns
+          const videoMatches = content.match(/"video_url"\s*:\s*"([^"]+)"/g);
           if (videoMatches) {
             videoMatches.forEach(match => {
-              const url = match.replace('"video_url":"', '').replace('"', '').replace(/\\u0026/g, '&');
-              if (url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
-                urls.push(url);
+              let url = match.replace(/"video_url"\s*:\s*"/, '').replace(/"$/, '');
+              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4')) {
+                result.videoUrls.push(url);
+                result.allUrls.push(url);
               }
             });
           }
           
+          // Look for GraphQL video data
+          const graphqlVideoMatches = content.match(/"video_versions"\s*:\s*\[\s*{[^}]+"url"\s*:\s*"([^"]+)"/g);
+          if (graphqlVideoMatches) {
+            graphqlVideoMatches.forEach(match => {
+              const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
+              if (urlMatch) {
+                let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4')) {
+                  result.videoUrls.push(url);
+                  result.allUrls.push(url);
+                }
+              }
+            });
+          }
+          
+          // Look for display_url for high-quality images
+          const imageMatches = content.match(/"display_url"\s*:\s*"([^"]+)"/g);
           if (imageMatches) {
             imageMatches.forEach(match => {
-              const url = match.replace('"display_url":"', '').replace('"', '').replace(/\\u0026/g, '&');
-              if (url.includes('cdninstagram.com') || url.includes('fbcdn.net')) {
-                // Prefer higher resolution images
-                if (!url.includes('_s150x150') && !url.includes('_s240x240')) {
-                  urls.push(url);
-                }
+              let url = match.replace(/"display_url"\s*:\s*"/, '').replace(/"$/, '');
+              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
+                  (url.includes('.jpg') || url.includes('.jpeg')) &&
+                  !url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320')) {
+                result.imageUrls.push(url);
+                result.allUrls.push(url);
               }
             });
           }
         });
         
-        return urls;
-      }).catch(() => []);
+        // Method 3: Check meta tags
+        const ogVideo = document.querySelector('meta[property="og:video"]')?.getAttribute('content');
+        if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('cdninstagram') || ogVideo.includes('fbcdn'))) {
+          result.videoUrls.push(ogVideo);
+          result.allUrls.push(ogVideo);
+        }
+        
+        // Remove duplicates
+        result.videoUrls = Array.from(new Set(result.videoUrls));
+        result.imageUrls = Array.from(new Set(result.imageUrls));
+        result.allUrls = Array.from(new Set(result.allUrls));
+        
+        return result;
+      }).catch(() => ({ videoUrls: [], imageUrls: [], allUrls: [] }));
       
-      // Combine intercepted and extracted URLs, removing duplicates
-      const allUrls = Array.from(new Set([...interceptedUrls, ...extractedUrls]));
-      const videoUrls = allUrls.filter(url => url.includes('.mp4'));
-      const imageUrls = allUrls.filter(url => url.includes('.jpg') || url.includes('.jpeg'));
+      const { videoUrls, imageUrls } = extractedData;
 
       // Process extracted data
       const type = this.detectContentType(url);
@@ -176,34 +209,39 @@ export class InstagramService {
                            url.match(/instagram\.com\/([^\/]+)/);
       const username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
 
-      // Prioritize high-quality media URLs
+      // Prioritize high-quality media URLs based on content type
       let mediaUrls: string[] = [];
       
+      console.log(`Extracted URLs for ${type}:`, { videoUrls, imageUrls, ogVideo, ogImage });
+      
       if (type === 'reel' || type === 'igtv') {
-        // For videos, prefer extracted video URLs over og:video
+        // For videos, MUST have video URLs - no fallback to images for video content
         if (videoUrls.length > 0) {
           mediaUrls = videoUrls;
-        } else if (ogVideo && !ogVideo.includes('blob:')) {
-          mediaUrls = [ogVideo];
-        } else if (imageUrls.length > 0) {
-          // Use high-quality images if video not available
-          mediaUrls = imageUrls.slice(0, 1);
-        } else if (ogImage) {
-          mediaUrls = [ogImage];
+        } else {
+          console.warn(`No video URLs found for ${type}. Extracted:`, extractedData.allUrls);
+          // Last resort: try og:video if it exists and is not a blob URL
+          if (ogVideo && !ogVideo.includes('blob:') && ogVideo.includes('.mp4')) {
+            mediaUrls = [ogVideo];
+          } else {
+            // This should not happen for video content - log the issue
+            console.error(`Failed to extract video URLs for ${type}. Available URLs:`, extractedData.allUrls);
+            throw new Error('No video content found - may be private or unavailable');
+          }
         }
       } else {
         // For posts, prefer high-quality images
         if (imageUrls.length > 0) {
           mediaUrls = imageUrls;
-        } else if (ogImage) {
+        } else if (ogImage && !ogImage.includes('blob:')) {
           mediaUrls = [ogImage];
+        } else {
+          console.warn(`No image URLs found for ${type}`);
+          throw new Error('No image content found - may be private or unavailable');
         }
       }
       
-      // Fallback if no media found
-      if (mediaUrls.length === 0) {
-        mediaUrls = ['https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=800&h=800&fit=crop'];
-      }
+      console.log(`Final media URLs for ${type}:`, mediaUrls);
 
       const metadata = {
         type,
@@ -218,6 +256,12 @@ export class InstagramService {
         mediaCount: Math.random() > 0.7 ? Math.floor(Math.random() * 5) + 2 : 1
       };
 
+      console.log(`Successfully extracted metadata for ${type}:`, {
+        username,
+        mediaCount: mediaUrls.length,
+        firstMediaUrl: mediaUrls[0]?.substring(0, 100) + '...'
+      });
+      
       return metadata as InstagramMetadata;
 
     } catch (error) {

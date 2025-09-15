@@ -100,8 +100,14 @@ export default function InstagramDownloader() {
     if (!content.downloadId) return;
     
     try {
-      // Open download link in new tab
-      window.open(`/api/downloads/${content.downloadId}/file`, '_blank');
+      // Create invisible anchor element for direct download
+      const link = document.createElement('a');
+      link.href = `/api/downloads/${content.downloadId}/file`;
+      link.download = ''; // Let browser determine filename
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
       
       toast({
         title: "Download Started! 📁",
