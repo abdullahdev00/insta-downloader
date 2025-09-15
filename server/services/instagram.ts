@@ -310,8 +310,7 @@ export class InstagramService {
                   
                   if (width > maxWidth && 
                       (url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') &&
-                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                     bestUrl = url;
                     maxWidth = width;
                   }
@@ -342,8 +341,7 @@ export class InstagramService {
                   
                   if (width > maxWidth && 
                       (url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') &&
-                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                     bestUrl = url;
                     maxWidth = width;
                   }
@@ -374,8 +372,7 @@ export class InstagramService {
               if (urlMatch) {
                 let mediaUrl = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
                 if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && 
-                    !mediaUrl.includes('/rsrc.php/') && !mediaUrl.includes('profile_pic') &&
-                    !mediaUrl.includes('dst-jpg_s') && !mediaUrl.includes('t51.2885-19')) {
+                    !mediaUrl.includes('/rsrc.php/') && !mediaUrl.includes('profile_pic')) {
                   imageUrls.push(mediaUrl);
                 }
               }
@@ -632,8 +629,7 @@ export class InstagramService {
                     
                     if (width > maxWidth && 
                         (url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                        !url.includes('/rsrc.php/') && !url.includes('profile_pic') &&
-                        !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                        !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                       bestUrl = url;
                       maxWidth = width;
                     }
@@ -666,8 +662,7 @@ export class InstagramService {
                     
                     if (width > maxWidth && 
                         (url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                        !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
-                        !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                        !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                       bestUrl = url;
                       maxWidth = width;
                     }
@@ -694,8 +689,7 @@ export class InstagramService {
                   let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
                   if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                       (url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) &&
-                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
-                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                     if (url.includes('.mp4')) {
                       result.videoUrls.push(url);
                     } else {
@@ -719,8 +713,7 @@ export class InstagramService {
                   let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
                   if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                       (url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) &&
-                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
-                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                     if (url.includes('.mp4')) {
                       result.videoUrls.push(url);
                     } else {
@@ -750,8 +743,7 @@ export class InstagramService {
             while ((imgMatch = imagePattern.exec(content)) !== null) {
               let url = imgMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
               if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
-                  !url.includes('/rsrc.php/') && !url.includes('profile_pic') &&
-                  !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                  !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
                 result.imageUrls.push(url);
                 result.allUrls.push(url);
               }
