@@ -103,36 +103,6 @@ export class InstagramService {
     return urlObj.toString();
   }
 
-  // Convert cropped/resized Instagram URLs to original full-size URLs
-  private getOriginalImageUrl(url: string): string {
-    if (!url || !url.includes('cdninstagram')) return url;
-    
-    try {
-      const urlObj = new URL(url);
-      const stp = urlObj.searchParams.get('stp');
-      
-      if (stp) {
-        // Remove size restrictions from stp parameter
-        // e.g., 'cmp1_dst-jpg_e35_s640x640_tt6' -> 'cmp1_dst-jpg_e35'
-        const newStp = stp
-          .replace(/_s\d+x\d+/g, '') // Remove size restrictions like _s640x640
-          .replace(/_c\d+\.\d+,\d+\.\d+,\d+\.\d+,\d+\.\d+a/g, '') // Remove crop parameters
-          .replace(/_tt\d+/g, '') // Remove transformation parameters
-          .replace(/_dst-jpg_e\d+/g, '_dst-jpg'); // Simplify encoding parameters
-        
-        if (newStp !== stp) {
-          urlObj.searchParams.set('stp', newStp);
-          console.log(`Converted to original size: ${url.substring(0, 100)}... -> ${urlObj.toString().substring(0, 100)}...`);
-          return urlObj.toString();
-        }
-      }
-      
-      return url;
-    } catch (error) {
-      console.warn('Error processing image URL for original size:', error);
-      return url;
-    }
-  }
 
   // Fast HTML-first extraction method
   async extractMetadataFast(url: string): Promise<InstagramMetadata> {
@@ -214,8 +184,6 @@ export class InstagramService {
             if (urlMatch) {
               let mediaUrl = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
               if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && !mediaUrl.includes('/rsrc.php/')) {
-                // Convert to original full-size image
-                mediaUrl = this.getOriginalImageUrl(mediaUrl);
                 imageUrls.push(mediaUrl);
               }
             }
@@ -238,7 +206,7 @@ export class InstagramService {
         if (imageUrls.length > 0) {
           mediaUrls = imageUrls;
         } else if (ogImage) {
-          mediaUrls = [this.getOriginalImageUrl(ogImage)];
+          mediaUrls = [ogImage];
         } else {
           throw new Error('No image content found in fast extraction');
         }
@@ -246,8 +214,8 @@ export class InstagramService {
 
       console.log(`Fast extraction successful! Found ${mediaUrls.length} media URLs`);
 
-      // Set thumbnail with fallbacks and convert to original size
-      let thumbnail = ogImage ? this.getOriginalImageUrl(ogImage) : (imageUrls.length > 0 ? imageUrls[0] : '');
+      // Set thumbnail with fallbacks
+      let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
       
       // Only require thumbnail for image posts (posts), not for videos (reels/igtv)
       if (type === 'post' && !thumbnail) {
@@ -459,8 +427,6 @@ export class InstagramService {
             let url = imgMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
             if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                 !url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
-              // Convert to original full-size image
-              url = this.getOriginalImageUrl(url);
               result.imageUrls.push(url);
               result.allUrls.push(url);
             }
@@ -477,8 +443,6 @@ export class InstagramService {
                     (url.includes('.jpg') || url.includes('.jpeg')) &&
                     !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
                     !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
-                  // Convert to original full-size image
-                  url = this.getOriginalImageUrl(url);
                   result.imageUrls.push(url);
                   result.allUrls.push(url);
                 }
@@ -607,7 +571,7 @@ export class InstagramService {
         if (imageUrls.length > 0) {
           mediaUrls = imageUrls;
         } else if (ogImage && !ogImage.includes('blob:')) {
-          mediaUrls = [this.getOriginalImageUrl(ogImage)];
+          mediaUrls = [ogImage];
         } else {
           console.warn(`No image URLs found for ${type}`);
           throw new Error('No image content found - may be private or unavailable');
@@ -616,8 +580,8 @@ export class InstagramService {
       
       console.log(`Final media URLs for ${type}:`, mediaUrls);
 
-      // Set thumbnail with fallbacks for Puppeteer path too, convert to original size
-      let thumbnail = ogImage ? this.getOriginalImageUrl(ogImage) : (imageUrls.length > 0 ? imageUrls[0] : '');
+      // Set thumbnail with fallbacks for Puppeteer path too
+      let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
       
       // Only require thumbnail for image posts, not for videos
       if (type === 'post' && !thumbnail) {
