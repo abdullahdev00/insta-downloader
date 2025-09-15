@@ -91,20 +91,165 @@ export class InstagramService {
     return patterns.some(pattern => pattern.test(url));
   }
 
+  // Normalize URL for better cache hits
+  private normalizeUrl(url: string): string {
+    const urlObj = new URL(url);
+    // Remove tracking parameters
+    urlObj.searchParams.delete('utm_source');
+    urlObj.searchParams.delete('utm_medium');
+    urlObj.searchParams.delete('utm_campaign');
+    urlObj.searchParams.delete('igshid');
+    urlObj.searchParams.delete('hl');
+    return urlObj.toString();
+  }
+
+  // Fast HTML-first extraction method
+  async extractMetadataFast(url: string): Promise<InstagramMetadata> {
+    const type = this.detectContentType(url);
+    
+    try {
+      console.log(`Trying fast HTML extraction for ${type}...`);
+      
+      const response = await axios.get(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1'
+        },
+        timeout: 5000
+      });
+
+      const $ = cheerio.load(response.data);
+      
+      // Extract basic metadata
+      const ogTitle = $('meta[property="og:title"]').attr('content') || '';
+      const ogDescription = $('meta[property="og:description"]').attr('content') || '';
+      const ogImage = $('meta[property="og:image"]').attr('content') || '';
+      const ogVideo = $('meta[property="og:video"]').attr('content') || '';
+
+      // Parse username
+      let username = 'instagram_user';
+      const usernameMatch = (ogTitle).match(/^(.+?)\s+on\s+Instagram/) || 
+                           (ogTitle).match(/@(\w+)/) ||
+                           url.match(/instagram\.com\/([^\/]+)/);
+      username = usernameMatch ? usernameMatch[1].replace('@', '') : 'instagram_user';
+
+      // Extract media URLs from script tags
+      let videoUrls: string[] = [];
+      let imageUrls: string[] = [];
+
+      $('script').each((_, script) => {
+        const content = $(script).html() || '';
+        
+        // Extract video URLs
+        const videoMatches = content.match(/"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g);
+        if (videoMatches) {
+          videoMatches.forEach(match => {
+            const urlMatch = match.match(/"video_url"\s*:\s*"([^"]+)"/);
+            if (urlMatch) {
+              let mediaUrl = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && !mediaUrl.includes('/rsrc.php/')) {
+                videoUrls.push(mediaUrl);
+              }
+            }
+          });
+        }
+
+        // Extract image URLs
+        const imageMatches = content.match(/"display_url"\s*:\s*"([^"]*\.(?:jpg|jpeg)[^"]*)"/g);
+        if (imageMatches) {
+          imageMatches.forEach(match => {
+            const urlMatch = match.match(/"display_url"\s*:\s*"([^"]+)"/);
+            if (urlMatch) {
+              let mediaUrl = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && !mediaUrl.includes('/rsrc.php/')) {
+                imageUrls.push(mediaUrl);
+              }
+            }
+          });
+        }
+      });
+
+      // Determine final media URLs based on content type
+      let mediaUrls: string[] = [];
+      
+      if (type === 'reel' || type === 'igtv') {
+        if (videoUrls.length > 0) {
+          mediaUrls = videoUrls;
+        } else if (ogVideo && ogVideo.includes('.mp4')) {
+          mediaUrls = [ogVideo];
+        } else {
+          throw new Error('No video content found in fast extraction');
+        }
+      } else {
+        if (imageUrls.length > 0) {
+          mediaUrls = imageUrls;
+        } else if (ogImage) {
+          mediaUrls = [ogImage];
+        } else {
+          throw new Error('No image content found in fast extraction');
+        }
+      }
+
+      console.log(`Fast extraction successful! Found ${mediaUrls.length} media URLs`);
+
+      return {
+        type,
+        username,
+        caption: ogDescription || 'Instagram content',
+        thumbnail: ogImage || 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
+        mediaUrls,
+        likes: Math.floor(Math.random() * 100000),
+        comments: Math.floor(Math.random() * 1000),
+        views: type === 'reel' || type === 'igtv' ? Math.floor(Math.random() * 500000) : undefined,
+        duration: type === 'reel' || type === 'igtv' ? '0:' + Math.floor(Math.random() * 60).toString().padStart(2, '0') : undefined,
+        mediaCount: mediaUrls.length
+      };
+
+    } catch (error: any) {
+      console.log('Fast extraction failed, falling back to Puppeteer:', error.message);
+      throw error; // Will trigger Puppeteer fallback
+    }
+  }
+
   async extractMetadata(url: string): Promise<InstagramMetadata> {
     if (!this.validateInstagramUrl(url)) {
       throw new Error('Invalid Instagram URL');
     }
 
-    // Check cache first
-    const cacheKey = url;
+    // Normalize URL for better cache hits
+    const normalizedUrl = this.normalizeUrl(url);
+    const cacheKey = normalizedUrl;
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      console.log('Returning cached metadata for:', url);
+      console.log('Returning cached metadata for:', normalizedUrl);
       return cached.data;
     }
 
     const type = this.detectContentType(url);
+    
+    // For stories, always use Puppeteer as they need authentication/session handling
+    if (type !== 'story') {
+      try {
+        const fastResult = await this.extractMetadataFast(url);
+        
+        // Cache the successful result
+        this.cache.set(cacheKey, { 
+          data: fastResult, 
+          timestamp: Date.now() 
+        });
+        
+        return fastResult;
+      } catch (error) {
+        console.log('Fast extraction failed, falling back to Puppeteer method...');
+      }
+    }
+
+    // Puppeteer fallback for stories or when fast method fails
     let browser = null;
     let page = null;
     let responseVideoUrls: string[] = [];
@@ -114,7 +259,24 @@ export class InstagramService {
       browser = await this.initBrowser();
       page = await browser.newPage();
 
-      await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
+      // Block unnecessary resources for faster loading (except for stories)
+      if (type !== 'story') {
+        await page.setRequestInterception(true);
+        page.on('request', (req) => {
+          const resourceType = req.resourceType();
+          const url = req.url();
+          
+          // Allow only essential resources
+          if (resourceType === 'document' || resourceType === 'script' || 
+              resourceType === 'xhr' || resourceType === 'fetch') {
+            req.continue();
+          } else {
+            req.abort();
+          }
+        });
+      }
+
+      await page.setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1');
       
       // For stories, add optional authentication and use mobile site
       if (type === 'story') {
@@ -131,34 +293,20 @@ export class InstagramService {
         
         // Use mobile site for simpler markup
         url = url.replace('www.instagram.com', 'm.instagram.com');
-        
-        // Add network response monitoring for stories
-        page.on('response', (response) => {
-          const contentType = response.headers()['content-type'] || '';
-          const responseUrl = response.url();
-          
-          if (!/cdninstagram|fbcdn/.test(responseUrl)) return;
-          
-          // Filter out Instagram's generic resource files
-          if (responseUrl.includes('/rsrc.php/') || responseUrl.includes('/static/')) return;
-          
-          if (contentType.includes('video') && responseUrl.includes('.mp4')) {
-            responseVideoUrls.push(responseUrl);
-          } else if (contentType.includes('image') && (responseUrl.includes('.jpg') || responseUrl.includes('.jpeg'))) {
-            // Additional filtering for story images - avoid tiny thumbnails and profile pics
-            if (!responseUrl.includes('_150x150') && !responseUrl.includes('_240x240') && !responseUrl.includes('_320x320') &&
-                !responseUrl.includes('profile_pic') && !responseUrl.includes('dst-jpg_s') && !responseUrl.includes('t51.2885-19')) {
-              responseImageUrls.push(responseUrl);
-            }
-          }
-        });
+      } else {
+        // Use mobile site for all content types for faster loading
+        url = url.replace('www.instagram.com', 'm.instagram.com');
       }
       
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 6000 });
       
-      // Optimized wait times - much faster
-      const waitTime = type === 'story' ? 2000 : 1000;
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+      // Wait for essential content only, no fixed delays
+      if (type === 'story') {
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      } else {
+        // For reels/posts, wait for scripts to load
+        await page.waitForSelector('script', { timeout: 2000 }).catch(() => {});
+      }
 
       // Extract basic info from page using simple evaluation
       const title = await page.title();
@@ -167,12 +315,13 @@ export class InstagramService {
       const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
       const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
 
-      // Disable request interception for simpler approach
-      await page.setRequestInterception(false);
+      // For non-stories, disable additional request interception that was set for blocking
+      if (type !== 'story') {
+        await page.setRequestInterception(false);
+      }
       
-      // Wait for content to load - optimized timing
-      await page.waitForSelector('video, img[src*="cdninstagram"], img[src*="fbcdn"]', { timeout: 5000 }).catch(() => {});
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Immediate content extraction without additional waits
+      await page.waitForSelector('script', { timeout: 1000 }).catch(() => {});
       
       // Extract media URLs using streamlined methods
       const extractedData = await page.evaluate(() => {
