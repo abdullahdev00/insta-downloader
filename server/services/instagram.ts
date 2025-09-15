@@ -213,15 +213,12 @@ export class InstagramService {
 
       console.log(`Fast extraction successful! Found ${mediaUrls.length} media URLs`);
 
-      // For video content, prioritize having the video even if thumbnail is missing
-      let thumbnail = ogImage;
-      if (!thumbnail && (type === 'reel' || type === 'igtv') && mediaUrls.length > 0) {
-        // For videos without og:image, try to use the first image URL found, or generate from video
-        thumbnail = imageUrls.length > 0 ? imageUrls[0] : '';
-      }
+      // Set thumbnail with fallbacks
+      let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
       
-      if (!thumbnail) {
-        throw new Error('No thumbnail found for content');
+      // Only require thumbnail for image posts (posts), not for videos (reels/igtv)
+      if (type === 'post' && !thumbnail) {
+        throw new Error('No thumbnail found for image post');
       }
 
       return {
@@ -340,10 +337,7 @@ export class InstagramService {
       const ogImage = await page.$eval('meta[property="og:image"]', el => el.getAttribute('content')).catch(() => '');
       const ogVideo = await page.$eval('meta[property="og:video"]', el => el.getAttribute('content')).catch(() => '');
 
-      // For non-stories, disable additional request interception that was set for blocking
-      if (type !== 'story') {
-        await page.setRequestInterception(false);
-      }
+      // Request interception remains active for resource blocking
       
       // Immediate content extraction without additional waits
       await page.waitForSelector('script', { timeout: 1000 }).catch(() => {});
@@ -585,11 +579,19 @@ export class InstagramService {
       
       console.log(`Final media URLs for ${type}:`, mediaUrls);
 
+      // Set thumbnail with fallbacks for Puppeteer path too
+      let thumbnail = ogImage || (imageUrls.length > 0 ? imageUrls[0] : '');
+      
+      // Only require thumbnail for image posts, not for videos
+      if (type === 'post' && !thumbnail) {
+        throw new Error('No thumbnail found for image post');
+      }
+
       const metadata = {
         type,
         username,
         caption: ogDescription || 'Instagram content',
-        thumbnail: ogImage,
+        thumbnail,
         mediaUrls,
         likes: 0,
         comments: 0,
