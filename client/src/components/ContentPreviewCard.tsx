@@ -41,11 +41,10 @@ export default function ContentPreviewCard({
     setIsDownloading(true);
     console.log(`Downloading ${type} from ${username}`);
     
-    // Simulate download
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Trigger actual download immediately
+    onDownload?.();
     
     setIsDownloading(false);
-    onDownload?.();
   };
 
   const getStatusButton = () => {
