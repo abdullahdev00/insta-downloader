@@ -2,6 +2,15 @@ import { ArrowRight, Download, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export default function HeroSection() {
+  const scrollToMagicInput = () => {
+    const element = document.getElementById('magic-input-section');
+    if (element) {
+      element.scrollIntoView({
+        behavior: 'smooth',
+        block: 'center'
+      });
+    }
+  };
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
       {/* Animated Background */}
@@ -50,6 +59,7 @@ export default function HeroSection() {
         <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
           <Button 
             size="lg" 
+            onClick={scrollToMagicInput}
             className="bg-instagram-gradient hover:bg-instagram-hover text-white px-8 py-6 text-lg rounded-full transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl"
             data-testid="button-start-download"
           >

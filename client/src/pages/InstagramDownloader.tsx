@@ -152,7 +152,7 @@ export default function InstagramDownloader() {
         
         
         {/* Magic Input */}
-        <section className="py-20 px-4">
+        <section id="magic-input-section" className="py-20 px-4">
           <div className="max-w-6xl mx-auto text-center mb-12">
             <h2 className="text-4xl font-bold mb-4">
               Paste Your <span className="bg-instagram-gradient bg-clip-text text-transparent">Instagram URL</span>
