@@ -73,10 +73,6 @@ export default function InstagramDownloader() {
           );
 
           if (download.status === 'completed') {
-            toast({
-              title: "Download Complete! 🎉",
-              description: "Your Instagram content is ready to download.",
-            });
             return;
           } else if (download.status === 'failed') {
             toast({
@@ -113,11 +109,6 @@ export default function InstagramDownloader() {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      toast({
-        title: "Download Started! 📁",
-        description: "Check your downloads folder.",
-      });
     } catch (error) {
       console.error('Error downloading file:', error);
       toast({

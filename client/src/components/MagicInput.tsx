@@ -42,10 +42,6 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
       const text = await navigator.clipboard.readText();
       if (text) {
         handleInputChange(text);
-        toast({
-          title: "URL Pasted! 📋",
-          description: "URL has been pasted from clipboard",
-        });
       }
     } catch (error) {
       toast({
@@ -95,11 +91,6 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
       }
 
       const { downloadId } = await downloadResponse.json();
-      
-      toast({
-        title: "Download Started! ✨",
-        description: `Processing ${metadata.type} from @${metadata.username}`,
-      });
 
       // Pass metadata with download ID to parent
       onDownload?.({ ...metadata, downloadId });
