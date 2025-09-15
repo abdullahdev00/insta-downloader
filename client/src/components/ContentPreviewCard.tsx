@@ -158,10 +158,7 @@ export default function ContentPreviewCard({
         </div>
       )}
 
-      {/* Story Ring (for stories) */}
-      {type === 'story' && (
-        <div className="absolute -inset-1 bg-instagram-gradient rounded-3xl animate-rotate" style={{ animationDuration: '3s' }} />
-      )}
+      {/* Story Ring removed - was causing rectangular box animation issue */}
 
       {/* Thumbnail */}
       <div className={`relative ${config.aspectRatio} overflow-hidden`}>

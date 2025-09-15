@@ -127,8 +127,9 @@ export class InstagramService {
           if (contentType.includes('video') && responseUrl.includes('.mp4')) {
             responseVideoUrls.push(responseUrl);
           } else if (contentType.includes('image') && (responseUrl.includes('.jpg') || responseUrl.includes('.jpeg'))) {
-            // Additional filtering for story images - avoid tiny thumbnails
-            if (!responseUrl.includes('_150x150') && !responseUrl.includes('_240x240') && !responseUrl.includes('_320x320')) {
+            // Additional filtering for story images - avoid tiny thumbnails and profile pics
+            if (!responseUrl.includes('_150x150') && !responseUrl.includes('_240x240') && !responseUrl.includes('_320x320') &&
+                !responseUrl.includes('profile_pic') && !responseUrl.includes('dst-jpg_s') && !responseUrl.includes('t51.2885-19')) {
               responseImageUrls.push(responseUrl);
             }
           }
@@ -249,7 +250,8 @@ export class InstagramService {
               if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                   (url.includes('.jpg') || url.includes('.jpeg')) &&
                   !url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320') &&
-                  !url.includes('/rsrc.php/')) {
+                  !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
+                  !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
                 result.imageUrls.push(url);
                 result.allUrls.push(url);
               }
@@ -265,12 +267,64 @@ export class InstagramService {
                 let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
                 if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                     (url.includes('.jpg') || url.includes('.jpeg')) &&
-                    !url.includes('/rsrc.php/')) {
+                    !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
+                    !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
                   result.imageUrls.push(url);
                   result.allUrls.push(url);
                 }
               }
             });
+          }
+          
+          // Look for story-specific media patterns
+          const storyMediaMatches = content.match(/"media"\s*:\s*{\s*"image_versions2"|"media"\s*:\s*{\s*"video_versions"/g);
+          if (storyMediaMatches) {
+            // Look for story media URLs in the media object
+            const mediaUrlMatches = content.match(/"media"\s*:\s*{[^}]*"(?:image_versions2|video_versions)"\s*:\s*\[[^]]*"url"\s*:\s*"([^"]+)"/g);
+            if (mediaUrlMatches) {
+              mediaUrlMatches.forEach(match => {
+                const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
+                if (urlMatch) {
+                  let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                  if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
+                      (url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) &&
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
+                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                    if (url.includes('.mp4')) {
+                      result.videoUrls.push(url);
+                    } else {
+                      result.imageUrls.push(url);
+                    }
+                    result.allUrls.push(url);
+                  }
+                }
+              });
+            }
+          }
+          
+          // Look for story-specific GraphQL patterns
+          const storyGraphQLMatches = content.match(/"stories"\s*:\s*\[[^]]*"media"\s*:\s*{[^}]*"(?:image_versions2|video_versions)"/g);
+          if (storyGraphQLMatches) {
+            const graphQLUrlMatches = content.match(/"stories"[^{]*{[^}]*"url"\s*:\s*"([^"]+)"/g);
+            if (graphQLUrlMatches) {
+              graphQLUrlMatches.forEach(match => {
+                const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
+                if (urlMatch) {
+                  let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                  if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
+                      (url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) &&
+                      !url.includes('/rsrc.php/') && !url.includes('profile_pic') && 
+                      !url.includes('dst-jpg_s') && !url.includes('t51.2885-19')) {
+                    if (url.includes('.mp4')) {
+                      result.videoUrls.push(url);
+                    } else {
+                      result.imageUrls.push(url);
+                    }
+                    result.allUrls.push(url);
+                  }
+                }
+              });
+            }
           }
         });
         

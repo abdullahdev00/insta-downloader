@@ -87,6 +87,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const filename = path.basename(download.filePath);
+      const fileExtension = path.extname(filename).toLowerCase();
+      
+      // Set proper content type based on file extension
+      let contentType = 'application/octet-stream';
+      if (fileExtension === '.mp4') {
+        contentType = 'video/mp4';
+      } else if (fileExtension === '.jpg' || fileExtension === '.jpeg') {
+        contentType = 'image/jpeg';
+      } else if (fileExtension === '.png') {
+        contentType = 'image/png';
+      }
+      
+      // Set proper headers for all devices, especially mobile
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      
+      // For mobile devices, ensure proper content length
+      const fs = await import('fs/promises');
+      const stats = await fs.stat(download.filePath);
+      res.setHeader('Content-Length', stats.size.toString());
+      
       res.download(download.filePath, filename);
     } catch (error) {
       console.error("Error serving file:", error);
