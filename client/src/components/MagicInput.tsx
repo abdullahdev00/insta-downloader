@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Search, Download, Loader2, Check, Clipboard } from 'lucide-react';
+import { Search, Download, Loader2, Check, Clipboard, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -54,6 +54,11 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
         variant: "destructive"
       });
     }
+  };
+
+  const handleClearInput = () => {
+    setUrl('');
+    setIsValid(false);
   };
 
   const handleDownload = async () => {
@@ -123,11 +128,19 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
         
         <div className="relative bg-background/20 backdrop-blur-xl border border-white/20 rounded-full p-2 shadow-2xl">
           <div className="flex items-center gap-2">
-            {/* Icon */}
+            {/* Icon - Search when empty, X to clear when filled */}
             <div className="flex-shrink-0 ml-4">
               <div className="relative">
-                <div className="w-12 h-12 bg-instagram-gradient rounded-full flex items-center justify-center animate-pulse-glow">
-                  <Search className="w-6 h-6 text-white" />
+                <div 
+                  className={`w-12 h-12 bg-instagram-gradient rounded-full flex items-center justify-center animate-pulse-glow ${url ? 'cursor-pointer hover:scale-110' : ''} transition-transform duration-200`}
+                  onClick={url ? handleClearInput : undefined}
+                  data-testid={url ? "button-clear" : "icon-search"}
+                >
+                  {url ? (
+                    <X className="w-6 h-6 text-white" />
+                  ) : (
+                    <Search className="w-6 h-6 text-white" />
+                  )}
                 </div>
               </div>
             </div>
