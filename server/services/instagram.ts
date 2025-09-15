@@ -121,10 +121,16 @@ export class InstagramService {
           
           if (!/cdninstagram|fbcdn/.test(responseUrl)) return;
           
+          // Filter out Instagram's generic resource files
+          if (responseUrl.includes('/rsrc.php/') || responseUrl.includes('/static/')) return;
+          
           if (contentType.includes('video') && responseUrl.includes('.mp4')) {
             responseVideoUrls.push(responseUrl);
           } else if (contentType.includes('image') && (responseUrl.includes('.jpg') || responseUrl.includes('.jpeg'))) {
-            responseImageUrls.push(responseUrl);
+            // Additional filtering for story images - avoid tiny thumbnails
+            if (!responseUrl.includes('_150x150') && !responseUrl.includes('_240x240') && !responseUrl.includes('_320x320')) {
+              responseImageUrls.push(responseUrl);
+            }
           }
         });
       }
@@ -197,7 +203,7 @@ export class InstagramService {
             videoMatches.forEach(match => {
               let url = match.replace(/"video_url"\s*:\s*"/, '').replace(/"$/, '');
               url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4')) {
+              if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
                 result.videoUrls.push(url);
                 result.allUrls.push(url);
               }
@@ -211,7 +217,22 @@ export class InstagramService {
               const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
               if (urlMatch) {
                 let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4')) {
+                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
+                  result.videoUrls.push(url);
+                  result.allUrls.push(url);
+                }
+              }
+            });
+          }
+          
+          // Look for story-specific video patterns
+          const storyVideoMatches = content.match(/"video_dash_manifest"\s*:\s*"[^"]*"|"video_url"\s*:\s*"([^"]+)"/g);
+          if (storyVideoMatches) {
+            storyVideoMatches.forEach(match => {
+              const urlMatch = match.match(/"video_url"\s*:\s*"([^"]+)"/);
+              if (urlMatch) {
+                let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
                   result.videoUrls.push(url);
                   result.allUrls.push(url);
                 }
@@ -227,9 +248,27 @@ export class InstagramService {
               url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
               if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
                   (url.includes('.jpg') || url.includes('.jpeg')) &&
-                  !url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320')) {
+                  !url.includes('_s150x150') && !url.includes('_s240x240') && !url.includes('_s320x320') &&
+                  !url.includes('/rsrc.php/')) {
                 result.imageUrls.push(url);
                 result.allUrls.push(url);
+              }
+            });
+          }
+          
+          // Look for story-specific image URLs
+          const storyImageMatches = content.match(/"image_versions2"\s*:\s*{\s*"candidates"\s*:\s*\[\s*{\s*"url"\s*:\s*"([^"]+)"/g);
+          if (storyImageMatches) {
+            storyImageMatches.forEach(match => {
+              const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
+              if (urlMatch) {
+                let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && 
+                    (url.includes('.jpg') || url.includes('.jpeg')) &&
+                    !url.includes('/rsrc.php/')) {
+                  result.imageUrls.push(url);
+                  result.allUrls.push(url);
+                }
               }
             });
           }
@@ -278,9 +317,9 @@ export class InstagramService {
           mediaUrls = videoUrls;
         } else if (imageUrls.length > 0) {
           mediaUrls = imageUrls;
-        } else if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('cdninstagram') || ogVideo.includes('fbcdn'))) {
+        } else if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('cdninstagram') || ogVideo.includes('fbcdn')) && !ogVideo.includes('/rsrc.php/')) {
           mediaUrls = [ogVideo];
-        } else if (ogImage && !ogImage.includes('blob:') && (ogImage.includes('cdninstagram') || ogImage.includes('fbcdn'))) {
+        } else if (ogImage && !ogImage.includes('blob:') && (ogImage.includes('cdninstagram') || ogImage.includes('fbcdn')) && !ogImage.includes('/rsrc.php/')) {
           mediaUrls = [ogImage];
         } else {
           console.warn(`No story media found. Response URLs: videos=${responseVideoUrls.length}, images=${responseImageUrls.length}`);
