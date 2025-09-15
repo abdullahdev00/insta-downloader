@@ -1,40 +1,154 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ParticleBackground from '@/components/ParticleBackground';
 import FloatingHeader from '@/components/FloatingHeader';
 import HeroSection from '@/components/HeroSection';
 import MagicInput from '@/components/MagicInput';
 import ContentTypeSelector from '@/components/ContentTypeSelector';
 import ContentPreviewCard from '@/components/ContentPreviewCard';
+import { useToast } from '@/hooks/use-toast';
+
+interface DownloadedContent {
+  id?: string;
+  downloadId?: string;
+  type: 'post' | 'reel' | 'story' | 'igtv';
+  thumbnail: string;
+  username: string;
+  avatar?: string;
+  likes?: number;
+  comments?: number;
+  views?: number;
+  duration?: string;
+  caption?: string;
+  mediaCount?: number;
+  status?: string;
+}
 
 export default function InstagramDownloader() {
   const [selectedContentType, setSelectedContentType] = useState<string>('posts');
-  const [downloadedContent, setDownloadedContent] = useState<any[]>([]);
+  const [downloadedContent, setDownloadedContent] = useState<DownloadedContent[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const { toast } = useToast();
 
-  const handleDownload = (url: string) => {
-    console.log('Processing download for:', url);
-    // todo: remove mock functionality
-    // Simulate content detection and add to preview
-    const mockContent = {
-      type: selectedContentType === 'posts' ? 'post' : selectedContentType === 'reels' ? 'reel' : 'story',
-      thumbnail: 'https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400&h=400&fit=crop',
-      username: 'downloaded_user',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face',
-      likes: Math.floor(Math.random() * 100000),
-      comments: Math.floor(Math.random() * 1000),
-      views: Math.floor(Math.random() * 500000),
-      duration: selectedContentType === 'reels' ? '0:30' : undefined,
-      caption: 'Downloaded content from Instagram URL',
-      mediaCount: Math.random() > 0.7 ? Math.floor(Math.random() * 5) + 2 : 1
+  // Load recent downloads on component mount
+  useEffect(() => {
+    loadRecentDownloads();
+  }, []);
+
+  const loadRecentDownloads = async () => {
+    try {
+      const response = await fetch('/api/downloads?limit=10');
+      if (response.ok) {
+        const downloads = await response.json();
+        const formattedContent = downloads
+          .filter((download: any) => download.metadata)
+          .map((download: any) => ({
+            id: download.id,
+            downloadId: download.id,
+            ...download.metadata,
+            avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`,
+            status: download.status
+          }));
+        
+        if (formattedContent.length > 0) {
+          setDownloadedContent(formattedContent);
+          setShowPreview(true);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading recent downloads:', error);
+    }
+  };
+
+  const handleDownload = (metadata: any) => {
+    console.log('Processing download for:', metadata);
+    
+    // Add avatar if not present
+    const contentWithAvatar = {
+      ...metadata,
+      avatar: metadata.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`,
+      status: 'processing'
     };
     
-    setDownloadedContent(prev => [mockContent, ...prev]);
+    setDownloadedContent(prev => [contentWithAvatar, ...prev]);
     setShowPreview(true);
+
+    // Poll for download status if we have a downloadId
+    if (metadata.downloadId) {
+      pollDownloadStatus(metadata.downloadId);
+    }
+  };
+
+  const pollDownloadStatus = async (downloadId: string) => {
+    const maxAttempts = 30; // 30 seconds max
+    let attempts = 0;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(`/api/downloads/${downloadId}`);
+        if (response.ok) {
+          const download = await response.json();
+          
+          // Update the content in our list
+          setDownloadedContent(prev => 
+            prev.map(content => 
+              content.downloadId === downloadId 
+                ? { ...content, status: download.status }
+                : content
+            )
+          );
+
+          if (download.status === 'completed') {
+            toast({
+              title: "Download Complete! 🎉",
+              description: "Your Instagram content is ready to download.",
+            });
+            return;
+          } else if (download.status === 'failed') {
+            toast({
+              title: "Download Failed",
+              description: "Something went wrong. Please try again.",
+              variant: "destructive"
+            });
+            return;
+          }
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 1000); // Poll every second
+        }
+      } catch (error) {
+        console.error('Error polling download status:', error);
+      }
+    };
+
+    poll();
   };
 
   const handleContentTypeSelect = (type: string) => {
     setSelectedContentType(type);
     console.log('Content type changed to:', type);
+  };
+
+  const handleFinalDownload = async (content: DownloadedContent) => {
+    if (!content.downloadId) return;
+    
+    try {
+      // Open download link in new tab
+      window.open(`/api/downloads/${content.downloadId}/file`, '_blank');
+      
+      toast({
+        title: "Download Started! 📁",
+        description: "Check your downloads folder.",
+      });
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast({
+        title: "Download Error",
+        description: "Please try again.",
+        variant: "destructive"
+      });
+    }
   };
 
   return (
@@ -84,9 +198,10 @@ export default function InstagramDownloader() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {downloadedContent.map((content, index) => (
                   <ContentPreviewCard 
-                    key={index}
+                    key={content.downloadId || index}
                     {...content}
-                    onDownload={() => console.log('Final download triggered')}
+                    avatar={content.avatar || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face`}
+                    onDownload={() => handleFinalDownload(content)}
                   />
                 ))}
               </div>

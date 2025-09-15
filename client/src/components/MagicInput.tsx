@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { Search, Download, Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useToast } from '@/hooks/use-toast';
 
 interface MagicInputProps {
-  onDownload?: (url: string) => void;
+  onDownload?: (metadata: any) => void;
 }
 
 export default function MagicInput({ onDownload }: MagicInputProps) {
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isValid, setIsValid] = useState(false);
+  const { toast } = useToast();
 
   const validateInstagramUrl = (url: string) => {
     const patterns = [
@@ -22,6 +24,14 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
     return patterns.some(pattern => pattern.test(url));
   };
 
+  const detectContentType = (url: string): string => {
+    if (url.includes('/reel/')) return 'reel';
+    if (url.includes('/stories/')) return 'story';
+    if (url.includes('/tv/')) return 'igtv';
+    if (url.includes('/p/')) return 'post';
+    return 'post';
+  };
+
   const handleInputChange = (value: string) => {
     setUrl(value);
     setIsValid(validateInstagramUrl(value));
@@ -31,19 +41,59 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
     if (!isValid) return;
     
     setIsLoading(true);
-    console.log('Download triggered for:', url);
     
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    setIsLoading(false);
-    onDownload?.(url);
-    
-    // Show success briefly
-    setTimeout(() => {
+    try {
+      // First get preview/metadata
+      const previewResponse = await fetch('/api/instagram/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+
+      if (!previewResponse.ok) {
+        throw new Error('Failed to fetch content preview');
+      }
+
+      const metadata = await previewResponse.json();
+      
+      // Start download process
+      const downloadResponse = await fetch('/api/instagram/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          url, 
+          type: detectContentType(url) 
+        })
+      });
+
+      if (!downloadResponse.ok) {
+        throw new Error('Failed to start download');
+      }
+
+      const { downloadId } = await downloadResponse.json();
+      
+      toast({
+        title: "Download Started! ✨",
+        description: `Processing ${metadata.type} from @${metadata.username}`,
+      });
+
+      // Pass metadata with download ID to parent
+      onDownload?.({ ...metadata, downloadId });
+      
+      // Clear form
       setUrl('');
       setIsValid(false);
-    }, 1000);
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      toast({
+        title: "Download Failed",
+        description: "Please check the URL and try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
