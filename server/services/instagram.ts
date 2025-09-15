@@ -213,7 +213,14 @@ export class InstagramService {
 
       console.log(`Fast extraction successful! Found ${mediaUrls.length} media URLs`);
 
-      if (!ogImage) {
+      // For video content, prioritize having the video even if thumbnail is missing
+      let thumbnail = ogImage;
+      if (!thumbnail && (type === 'reel' || type === 'igtv') && mediaUrls.length > 0) {
+        // For videos without og:image, try to use the first image URL found, or generate from video
+        thumbnail = imageUrls.length > 0 ? imageUrls[0] : '';
+      }
+      
+      if (!thumbnail) {
         throw new Error('No thumbnail found for content');
       }
 
@@ -221,7 +228,7 @@ export class InstagramService {
         type,
         username,
         caption: ogDescription || 'Instagram content',
-        thumbnail: ogImage,
+        thumbnail,
         mediaUrls,
         likes: 0,
         comments: 0,
@@ -272,8 +279,6 @@ export class InstagramService {
     // Puppeteer fallback for stories or when fast method fails
     let browser = null;
     let page = null;
-    let responseVideoUrls: string[] = [];
-    let responseImageUrls: string[] = [];
 
     try {
       browser = await this.initBrowser();
@@ -517,10 +522,8 @@ export class InstagramService {
         return result;
       }).catch(() => ({ videoUrls: [], imageUrls: [], allUrls: [] }));
       
-      // Merge response-captured URLs with DOM-extracted ones
-      const allVideoUrls = Array.from(new Set([...responseVideoUrls, ...extractedData.videoUrls]));
-      const allImageUrls = Array.from(new Set([...responseImageUrls, ...extractedData.imageUrls]));
-      const { videoUrls, imageUrls } = { videoUrls: allVideoUrls, imageUrls: allImageUrls };
+      // Use DOM-extracted URLs directly
+      const { videoUrls, imageUrls } = extractedData;
 
       // Process extracted data and fix username parsing for stories
       let username = 'instagram_user';
@@ -550,7 +553,7 @@ export class InstagramService {
         } else if (ogImage && !ogImage.includes('blob:') && (ogImage.includes('cdninstagram') || ogImage.includes('fbcdn')) && !ogImage.includes('/rsrc.php/')) {
           mediaUrls = [ogImage];
         } else {
-          console.warn(`No story media found. Response URLs: videos=${responseVideoUrls.length}, images=${responseImageUrls.length}`);
+          console.warn(`No story media found. Extracted URLs: videos=${videoUrls.length}, images=${imageUrls.length}`);
           throw new Error('No story media found; it may be private, expired or requires login. Try adding IG_SESSIONID environment variable for private stories.');
         }
       } else if (type === 'reel' || type === 'igtv') {
