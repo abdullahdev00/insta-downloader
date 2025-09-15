@@ -574,45 +574,77 @@ export class InstagramService {
         document.querySelectorAll('script').forEach(script => {
           const content = script.textContent || '';
           
-          // Quick video URL extraction
-          const videoPattern = /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g;
-          let match;
-          while ((match = videoPattern.exec(content)) !== null) {
-            let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-            if ((url.includes('cdninstagram') || url.includes('fbcdn')) && !url.includes('/rsrc.php/')) {
+          // Enhanced video URL extraction with multiple patterns
+          const videoPatterns = [
+            // Standard video_url pattern
+            /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Direct .mp4 URLs in various contexts
+            /"(?:src|url)"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Instagram CDN video URLs (broad search)
+            /"([^"]*cdninstagram[^"]*\.mp4[^"]*)"/g,
+            // Facebook CDN video URLs  
+            /"([^"]*fbcdn[^"]*\.mp4[^"]*)"/g,
+            // Scontent CDN patterns
+            /"([^"]*scontent[^"]*\.mp4[^"]*)"/g,
+            // Playback URL patterns
+            /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Progressive video patterns
+            /"progressive"[^}]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
+          ];
+          
+          videoPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if (url.includes('.mp4') && 
+                  (url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                  !url.includes('/rsrc.php/') &&
+                  !url.includes('profile_pic') &&
+                  url.startsWith('http')) {
+                result.videoUrls.push(url);
+                result.allUrls.push(url);
+              }
+            }
+          });
+          
+          // Enhanced GraphQL and nested video data extraction
+          const advancedPatterns = [
+            // GraphQL video_versions pattern
+            /"video_versions"\s*:\s*\[[^\]]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // ClipsMedia video patterns
+            /"ClipsMedia"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Nested media video patterns
+            /"media"\s*:\s*{[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Reels media patterns
+            /"reels_media"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // XIG patterns (Instagram's internal format)
+            /"xig_[^"]*"\s*:\s*"([^"]*\.mp4[^"]*)"/g
+          ];
+          
+          advancedPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if (url.includes('.mp4') && 
+                  (url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                  !url.includes('/rsrc.php/') &&
+                  !url.includes('profile_pic') &&
+                  url.startsWith('http')) {
+                result.videoUrls.push(url);
+                result.allUrls.push(url);
+              }
+            }
+          });
+          
+          // Aggressive video URL search as last resort
+          const aggressiveVideoPattern = /https?:\/\/[^"]*(?:cdninstagram|fbcdn|scontent)[^"]*\.mp4[^"]*/g;
+          let aggressiveMatch;
+          while ((aggressiveMatch = aggressiveVideoPattern.exec(content)) !== null) {
+            let url = aggressiveMatch[0].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            if (!url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
               result.videoUrls.push(url);
               result.allUrls.push(url);
             }
-          }
-          
-          // Look for GraphQL video data
-          const graphqlVideoMatches = content.match(/"video_versions"\s*:\s*\[\s*{[^}]+"url"\s*:\s*"([^"]+)"/g);
-          if (graphqlVideoMatches) {
-            graphqlVideoMatches.forEach(match => {
-              const urlMatch = match.match(/"url"\s*:\s*"([^"]+)"/);
-              if (urlMatch) {
-                let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
-                  result.videoUrls.push(url);
-                  result.allUrls.push(url);
-                }
-              }
-            });
-          }
-          
-          // Look for story-specific video patterns
-          const storyVideoMatches = content.match(/"video_dash_manifest"\s*:\s*"[^"]*"|"video_url"\s*:\s*"([^"]+)"/g);
-          if (storyVideoMatches) {
-            storyVideoMatches.forEach(match => {
-              const urlMatch = match.match(/"video_url"\s*:\s*"([^"]+)"/);
-              if (urlMatch) {
-                let url = urlMatch[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-                if ((url.includes('cdninstagram') || url.includes('fbcdn')) && url.includes('.mp4') && !url.includes('/rsrc.php/')) {
-                  result.videoUrls.push(url);
-                  result.allUrls.push(url);
-                }
-              }
-            });
           }
           
           // High-resolution image extraction from display_resources (original aspect ratio)
@@ -758,6 +790,15 @@ export class InstagramService {
         result.videoUrls = Array.from(new Set(result.videoUrls));
         result.imageUrls = Array.from(new Set(result.imageUrls));
         result.allUrls = Array.from(new Set(result.allUrls));
+        
+        // Add detailed logging for debugging video extraction
+        console.log(`Puppeteer extraction results: videos=${result.videoUrls.length}, images=${result.imageUrls.length}`);
+        if (result.videoUrls.length === 0 && result.imageUrls.length > 0) {
+          console.warn('Found images but no videos - this might be a video content extraction issue');
+        }
+        if (result.videoUrls.length > 0) {
+          console.log('Sample video URL found:', result.videoUrls[0].substring(0, 100) + '...');
+        }
         
         return result;
       }).catch(() => ({ videoUrls: [], imageUrls: [], allUrls: [] }));
