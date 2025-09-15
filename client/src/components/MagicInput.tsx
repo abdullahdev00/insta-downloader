@@ -123,28 +123,28 @@ export default function MagicInput({ onDownload }: MagicInputProps) {
               data-testid="input-instagram-url"
             />
             
-            {/* Download Button */}
+            {/* Download Button - Responsive: icon only on small screens */}
             <Button
               onClick={handleDownload}
               disabled={!isValid || isLoading}
               size="lg"
-              className="mr-2 h-14 px-8 bg-instagram-gradient hover:bg-instagram-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-full text-white font-semibold transition-all duration-300 transform hover:scale-105"
+              className="mr-2 h-14 sm:px-8 px-4 bg-instagram-gradient hover:bg-instagram-hover disabled:opacity-50 disabled:cursor-not-allowed rounded-full text-white font-semibold transition-all duration-300 transform hover:scale-105"
               data-testid="button-download"
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Processing...
+                  <Loader2 className="w-5 h-5 sm:mr-2 animate-spin" />
+                  <span className="hidden sm:inline">Processing...</span>
                 </>
               ) : isValid && !isLoading ? (
                 <>
-                  <Check className="w-5 h-5 mr-2" />
-                  Download
+                  <Check className="w-5 h-5 sm:mr-2" />
+                  <span className="hidden sm:inline">Download</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-5 h-5 mr-2" />
-                  Download
+                  <Download className="w-5 h-5 sm:mr-2" />
+                  <span className="hidden sm:inline">Download</span>
                 </>
               )}
             </Button>
