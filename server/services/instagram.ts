@@ -904,11 +904,17 @@ export class InstagramService {
           mediaUrls = imageUrls;
         } else if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('cdninstagram') || ogVideo.includes('fbcdn')) && !ogVideo.includes('/rsrc.php/')) {
           mediaUrls = [ogVideo];
-        } else if (ogImage && !ogImage.includes('blob:') && (ogImage.includes('cdninstagram') || ogImage.includes('fbcdn')) && !ogImage.includes('/rsrc.php/')) {
-          mediaUrls = [ogImage];
         } else {
+          // DO NOT USE PROFILE PICTURES AS STORY FALLBACK
+          // Profile pictures have patterns like /t51.82787-19/ or /t51.2885-19/
+          // Stories should only extract actual story content, not profile pictures
           console.warn(`No story media found. Extracted URLs: videos=${videoUrls.length}, images=${imageUrls.length}`);
-          throw new Error('No story media found; it may be private, expired or requires login. Try adding IG_SESSIONID environment variable for private stories.');
+          console.warn(`Story extraction failed - this story may be:
+            - Private (requires login)
+            - Expired (stories expire after 24 hours)
+            - Geo-restricted or unavailable
+            - Requires IG_SESSIONID environment variable for private stories`);
+          throw new Error('Unable to extract story content. This story may be private, expired, or require authentication. Profile images are not downloaded as story content.');
         }
       } else if (contentType === 'reel' || contentType === 'igtv') {
         // For videos, MUST have actual video URLs - no fallback to images
