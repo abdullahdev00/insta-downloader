@@ -309,6 +309,38 @@ export class InstagramService {
           pattern.lastIndex = 0;
         });
 
+        // Enhanced aggressive search for HTML scraping method
+        if (videoUrls.length === 0) {
+          // Try broader patterns for video URLs
+          const fallbackVideoPatterns = [
+            // Any MP4 with Instagram CDNs - very broad search
+            /https?:\/\/[^"'\s]*(?:scontent|cdninstagram|fbcdn)[^"'\s]*\.mp4[^"'\s]*/g,
+            // Look for encoded URLs
+            /https%3A%2F%2F[^"'\s]*(?:scontent|cdninstagram|fbcdn)[^"'\s]*\.mp4[^"'\s]*/g
+          ];
+
+          fallbackVideoPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              let url = match[0];
+              // Decode if URL-encoded
+              if (url.includes('%3A%2F%2F')) {
+                url = decodeURIComponent(url);
+              }
+              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              
+              if (url.includes('.mp4') && 
+                  (url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                  !url.includes('/rsrc.php/') && 
+                  !url.includes('profile_pic') &&
+                  url.startsWith('http')) {
+                videoUrls.push(url);
+              }
+            }
+            pattern.lastIndex = 0;
+          });
+        }
+
         // Extract high-resolution image URLs from display_resources (original aspect ratio)
         const displayResourcesMatches = content.match(/"display_resources"\s*:\s*\[[^\]]*\]/g);
         if (displayResourcesMatches) {
@@ -659,14 +691,44 @@ export class InstagramService {
             }
           });
           
-          // Aggressive video URL search as last resort
-          const aggressiveVideoPattern = /https?:\/\/[^"]*(?:cdninstagram|fbcdn|scontent)[^"]*\.mp4[^"]*/g;
-          let aggressiveMatch;
-          while ((aggressiveMatch = aggressiveVideoPattern.exec(content)) !== null) {
-            let url = aggressiveMatch[0].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-            if (!url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
-              result.videoUrls.push(url);
-              result.allUrls.push(url);
+          // Aggressive video URL search as last resort - updated for 2025
+          const aggressiveVideoPatterns = [
+            // Standard MP4 patterns on Instagram CDN
+            /https?:\/\/[^"']*(?:cdninstagram|fbcdn|scontent)[^"']*\.mp4[^"']*/g,
+            // More specific Instagram video patterns
+            /https?:\/\/[^"']*scontent[^"']*\/o1\/v\/t2\/f2\/[^"']*\.mp4[^"']*/g,
+            // Instagram progressive video patterns  
+            /https?:\/\/[^"']*cdninstagram[^"']*\/o1\/v\/t2\/[^"']*\.mp4[^"']*/g,
+            // Facebook CDN video patterns
+            /https?:\/\/[^"']*fbcdn[^"']*\/v\/t[^"']*\.mp4[^"']*/g,
+            // Backup: any .mp4 URL with Instagram domains
+            /"(https?:\/\/[^"]*(?:instagram|fbcdn|scontent)[^"]*\.mp4[^"]*)"/g
+          ];
+          
+          aggressiveVideoPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              let url = match[1] || match[0]; // Handle both capturing and non-capturing groups
+              url = url.replace(/\\u0026/g, '&').replace(/\\\//g, '/').replace(/^"/, '').replace(/"$/, '');
+              
+              if (url.includes('.mp4') && 
+                  (url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                  !url.includes('/rsrc.php/') && 
+                  !url.includes('profile_pic') &&
+                  url.startsWith('http')) {
+                result.videoUrls.push(url);
+                result.allUrls.push(url);
+              }
+            }
+          });
+          
+          // Debug: Log the first 500 characters of script content if no videos found
+          if (result.videoUrls.length === 0 && content.length > 1000) {
+            console.log('Script content sample (first 500 chars):', content.substring(0, 500));
+            // Look for any .mp4 mentions in the content
+            const mp4Mentions = content.match(/\.mp4[^"']*/g);
+            if (mp4Mentions) {
+              console.log('Found .mp4 mentions:', mp4Mentions.slice(0, 3)); // Show first 3
             }
           }
           
