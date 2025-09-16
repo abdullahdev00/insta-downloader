@@ -590,7 +590,7 @@ export class InstagramService {
         document.querySelectorAll('script').forEach(script => {
           const content = script.textContent || '';
           
-          // Enhanced video URL extraction with multiple patterns
+          // Enhanced video URL extraction with multiple patterns (including story-specific)
           const videoPatterns = [
             // Standard video_url pattern
             /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
@@ -605,7 +605,14 @@ export class InstagramService {
             // Playback URL patterns
             /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
             // Progressive video patterns
-            /"progressive"[^}]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
+            /"progressive"[^}]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Story-specific video patterns (2025 updated)
+            /"stories"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            /"story_media"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            /"reels_tray_item"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // Instagram story dash/hls patterns
+            /"dash_manifest"\s*:\s*"([^"]*)"/g,
+            /"video_dash_manifest"\s*:\s*"([^"]*)"/g
           ];
           
           videoPatterns.forEach(pattern => {
@@ -774,6 +781,56 @@ export class InstagramService {
                   }
                 }
               });
+            }
+          }
+          
+          // Enhanced story-specific extraction patterns (2025)
+          const enhancedStoryPatterns = [
+            // Story tray item patterns
+            /"story_tray"[^}]*"items"\s*:\s*\[[^]]*"media"[^}]*"(?:image_versions2|video_versions)"\s*:\s*\[[^]]*"url"\s*:\s*"([^"]+)"/g,
+            // Story media item patterns  
+            /"story_media_item"[^}]*"(?:image_versions2|video_versions)"\s*:\s*\[[^]]*"url"\s*:\s*"([^"]+)"/g,
+            // Story feed patterns
+            /"story_feed"[^}]*"media"[^}]*"url"\s*:\s*"([^"]+)"/g,
+            // XDT story patterns (Instagram's new format)
+            /"xdt_api__v1__media__story"[^}]*"url"\s*:\s*"([^"]+)"/g,
+            // Story highlight patterns
+            /"highlights"[^}]*"media"[^}]*"url"\s*:\s*"([^"]+)"/g,
+            // Story reel tab patterns
+            /"story_reel_tab"[^}]*"url"\s*:\s*"([^"]+)"/g
+          ];
+
+          enhancedStoryPatterns.forEach(pattern => {
+            let match;
+            while ((match = pattern.exec(content)) !== null) {
+              let url = match[1].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              if ((url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) && 
+                  (url.includes('.mp4') || url.includes('.jpg') || url.includes('.jpeg')) &&
+                  !url.includes('/rsrc.php/') && 
+                  !url.includes('profile_pic') &&
+                  url.startsWith('http')) {
+                if (url.includes('.mp4')) {
+                  result.videoUrls.push(url);
+                } else {
+                  result.imageUrls.push(url);
+                }
+                result.allUrls.push(url);
+              }
+            }
+          });
+          
+          // Last resort: comprehensive regex search for story content
+          const storyUrlRegex = /https?:\/\/[^"']*(?:cdninstagram|fbcdn|scontent)[^"']*\/(?:v\/t51\.2885-15|o1\/v\/t2\/f2)\/[^"']*\.(?:mp4|jpg|jpeg)/g;
+          let storyMatch;
+          while ((storyMatch = storyUrlRegex.exec(content)) !== null) {
+            let url = storyMatch[0].replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+            if (!url.includes('/rsrc.php/') && !url.includes('profile_pic')) {
+              if (url.includes('.mp4')) {
+                result.videoUrls.push(url);
+              } else {
+                result.imageUrls.push(url);
+              }
+              result.allUrls.push(url);
             }
           }
         });
