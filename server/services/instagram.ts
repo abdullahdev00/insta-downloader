@@ -261,36 +261,52 @@ export class InstagramService {
       $('script').each((_, script) => {
         const content = $(script).html() || '';
         
-        // Extract video URLs with multiple patterns (2024-2025 updated)
+        // Extract video URLs with comprehensive patterns (2025 updated)
         const videoPatterns = [
-          // Modern Instagram patterns (2024-2025)
+          // Most common Instagram 2025 patterns
           /"video_versions"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
           /"video_versions"\s*:\s*\[[^\]]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
-          // Legacy patterns (still in use)
+          // Direct video URL patterns
           /"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
-          /"src"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
-          /videoUrl['"']?\s*:\s*['"]([^'"]*\.mp4[^'"]*)['"]?/g,
           /"playback_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
-          // Additional 2024-2025 patterns
+          /"src"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Modern progressive and adaptive patterns
+          /"progressive"\s*:\s*\[\s*\{\s*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"adaptive_formats"\s*:\s*\[[^\]]*"url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Reels-specific patterns
+          /"reels_media"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"clips_media"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Enhanced GraphQL patterns for 2025
+          /"media"\s*:\s*\{[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          /"edge_media_to_video"\s*:\s*\{[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+          // Aggressive CDN pattern matching
+          /"([^"]*(?:cdninstagram|fbcdn|scontent)[^"]*\.mp4[^"]*)"/g,
+          // Additional backup patterns
+          /videoUrl['"']?\s*:\s*['"]([^'"]*\.mp4[^'"]*)['"]?/g,
           /"url"\s*:\s*"([^"]*\.mp4[^"]*)"[^}]*"type"\s*:\s*"video"/g,
           /"dash_manifest"\s*:\s*"[^"]*"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g
         ];
         
         videoPatterns.forEach(pattern => {
-          const matches = content.match(pattern);
-          if (matches) {
-            matches.forEach(match => {
-              const urlMatch = match.match(/"(?:video_url|src|url|playback_url)"\s*:\s*"([^"]+)"|videoUrl['"']?\s*:\s*['"]([^'"]+)['"]?/);
-              if (urlMatch) {
-                let mediaUrl = (urlMatch[1] || urlMatch[2]).replace(/\\u0026/g, '&').replace(/\\\//g, '/');
-                if ((mediaUrl.includes('cdninstagram') || mediaUrl.includes('fbcdn')) && 
-                    !mediaUrl.includes('/rsrc.php/') && 
-                    mediaUrl.includes('.mp4')) {
-                  videoUrls.push(mediaUrl);
-                }
+          let match;
+          while ((match = pattern.exec(content)) !== null) {
+            let videoUrl = match[1];
+            if (videoUrl) {
+              // Clean up the URL
+              videoUrl = videoUrl.replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+              
+              // Validate URL format and CDN
+              if (videoUrl.includes('.mp4') && 
+                  (videoUrl.includes('cdninstagram') || videoUrl.includes('fbcdn') || videoUrl.includes('scontent')) && 
+                  !videoUrl.includes('/rsrc.php/') && 
+                  !videoUrl.includes('profile_pic') &&
+                  videoUrl.startsWith('http')) {
+                videoUrls.push(videoUrl);
               }
-            });
+            }
           }
+          // Reset regex lastIndex to ensure proper matching
+          pattern.lastIndex = 0;
         });
 
         // Extract high-resolution image URLs from display_resources (original aspect ratio)
