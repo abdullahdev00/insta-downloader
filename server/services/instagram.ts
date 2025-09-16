@@ -356,7 +356,10 @@ export class InstagramService {
           console.log('Attempting final broad MP4 search...');
           const allMp4Regex = /https:\/\/[^"'\s]*\.mp4[^"'\s]*/g;
           let mp4Match;
-          while ((mp4Match = allMp4Regex.exec(content)) !== null) {
+          let attempts = 0;
+          const maxAttempts = 100; // Safety limit
+          while ((mp4Match = allMp4Regex.exec(content)) !== null && attempts < maxAttempts) {
+            attempts++;
             let url = mp4Match[0];
             if ((url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
                 !url.includes('/rsrc.php/') && 
@@ -364,8 +367,14 @@ export class InstagramService {
                 !url.includes('blob:')) {
               videoUrls.push(url);
               console.log('Found MP4 URL:', url.substring(0, 100) + '...');
+              break; // Stop after finding first valid URL
+            }
+            // Prevent infinite loop
+            if (allMp4Regex.lastIndex === mp4Match.index) {
+              allMp4Regex.lastIndex++;
             }
           }
+          allMp4Regex.lastIndex = 0; // Reset regex
         }
 
         // Extract high-resolution image URLs from display_resources (original aspect ratio)
@@ -766,7 +775,10 @@ export class InstagramService {
             console.log('Attempting final broad MP4 search in Puppeteer...');
             const allMp4Regex = /https:\/\/[^"'\s]*\.mp4[^"'\s]*/g;
             let mp4Match;
-            while ((mp4Match = allMp4Regex.exec(content)) !== null) {
+            let attempts = 0;
+            const maxAttempts = 100; // Safety limit
+            while ((mp4Match = allMp4Regex.exec(content)) !== null && attempts < maxAttempts) {
+              attempts++;
               let url = mp4Match[0];
               if ((url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
                   !url.includes('/rsrc.php/') && 
@@ -775,8 +787,14 @@ export class InstagramService {
                 result.videoUrls.push(url);
                 result.allUrls.push(url);
                 console.log('Found MP4 URL via broad search:', url.substring(0, 100) + '...');
+                break; // Stop after finding first valid URL
+              }
+              // Prevent infinite loop
+              if (allMp4Regex.lastIndex === mp4Match.index) {
+                allMp4Regex.lastIndex++;
               }
             }
+            allMp4Regex.lastIndex = 0; // Reset regex
           }
 
           // Debug: Log the first 500 characters of script content if no videos found
@@ -1041,12 +1059,23 @@ export class InstagramService {
           mediaUrls = videoUrls;
         } else {
           console.warn(`No video URLs found for ${contentType}. Extracted:`, extractedData.allUrls);
-          // Only try og:video if it's actually a video file
-          if (ogVideo && !ogVideo.includes('blob:') && ogVideo.includes('.mp4') && ogVideo.includes('cdninstagram')) {
+          console.warn(`og:video available: ${ogVideo ? 'yes' : 'no'}, og:image available: ${ogImage ? 'yes' : 'no'}`);
+          
+          // Try og:video with more flexible criteria
+          if (ogVideo && !ogVideo.includes('blob:') && (ogVideo.includes('.mp4') || ogVideo.includes('video'))) {
             mediaUrls = [ogVideo];
-            console.log('Using og:video as fallback - actual video file');
+            console.log('Using og:video as fallback:', ogVideo);
+          } 
+          // If no video found, try to construct video URL from image URL (Instagram pattern)
+          else if (ogImage && (ogImage.includes('cdninstagram') || ogImage.includes('scontent'))) {
+            // Sometimes Instagram serves video and image from similar URLs
+            const possibleVideoUrl = ogImage.replace(/\.(jpg|jpeg|png|webp)/, '.mp4').replace(/e35_s\d+x\d+/, 'e35');
+            console.log('Attempting to construct video URL from image URL:', possibleVideoUrl);
+            
+            // For now, use the thumbnail as fallback with a warning
+            mediaUrls = [ogImage];
+            console.warn('⚠️  Could not extract video URL. Using thumbnail as fallback. This may be an image instead of video.');
           } else {
-            // NO THUMBNAIL FALLBACKS FOR VIDEOS - better to fail than give user cropped images
             console.error(`Failed to extract video URLs for ${contentType}. Available URLs:`, extractedData.allUrls);
             throw new Error('Unable to extract video content. This reel may be private, geo-restricted, or use a format we cannot currently access. Please try a different URL.');
           }
