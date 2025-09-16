@@ -316,13 +316,23 @@ export class InstagramService {
             // Any MP4 with Instagram CDNs - very broad search
             /https?:\/\/[^"'\s]*(?:scontent|cdninstagram|fbcdn)[^"'\s]*\.mp4[^"'\s]*/g,
             // Look for encoded URLs
-            /https%3A%2F%2F[^"'\s]*(?:scontent|cdninstagram|fbcdn)[^"'\s]*\.mp4[^"'\s]*/g
+            /https%3A%2F%2F[^"'\s]*(?:scontent|cdninstagram|fbcdn)[^"'\s]*\.mp4[^"'\s]*/g,
+            // 2025 Instagram patterns - more specific to current structure
+            /"video_dash_manifest"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"progressive_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"is_video":\s*true[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // XDT API patterns (Instagram's internal API)
+            /"xdt_api__v1__media__shortcode__web_info"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // Reels tab patterns
+            /"reels_tab_[^"]*"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // GraphQL edge patterns
+            /"edge_sidecar_to_children"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g
           ];
 
           fallbackVideoPatterns.forEach(pattern => {
             let match;
             while ((match = pattern.exec(content)) !== null) {
-              let url = match[0];
+              let url = match[1] || match[0];
               // Decode if URL-encoded
               if (url.includes('%3A%2F%2F')) {
                 url = decodeURIComponent(url);
@@ -339,6 +349,23 @@ export class InstagramService {
             }
             pattern.lastIndex = 0;
           });
+        }
+
+        // Final desperate attempt - search for any .mp4 URLs in the content
+        if (videoUrls.length === 0) {
+          console.log('Attempting final broad MP4 search...');
+          const allMp4Regex = /https:\/\/[^"'\s]*\.mp4[^"'\s]*/g;
+          let mp4Match;
+          while ((mp4Match = allMp4Regex.exec(content)) !== null) {
+            let url = mp4Match[0];
+            if ((url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                !url.includes('/rsrc.php/') && 
+                !url.includes('profile_pic') &&
+                !url.includes('blob:')) {
+              videoUrls.push(url);
+              console.log('Found MP4 URL:', url.substring(0, 100) + '...');
+            }
+          }
         }
 
         // Extract high-resolution image URLs from display_resources (original aspect ratio)
@@ -670,6 +697,18 @@ export class InstagramService {
             /"ClipsMedia"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
             // Nested media video patterns
             /"media"\s*:\s*{[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
+            // 2025 Instagram XDT API patterns
+            /"xdt_api__v1__media__shortcode__web_info"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"progressive_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"video_dash_manifest"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // Instagram Reels modern patterns  
+            /"is_video":\s*true[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"reels_tab_[^"]*"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // GraphQL edge patterns for 2025
+            /"edge_sidecar_to_children"[^}]*"video_url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            // Additional modern patterns
+            /"video_codec"[^}]*"url"[^"]*"([^"]*\.mp4[^"]*)"/g,
+            /"format_type"[^}]*"url"[^"]*"([^"]*\.mp4[^"]*)"/g,
             // Reels media patterns
             /"reels_media"[^}]*"video_url"\s*:\s*"([^"]*\.mp4[^"]*)"/g,
             // XIG patterns (Instagram's internal format)
@@ -722,6 +761,24 @@ export class InstagramService {
             }
           });
           
+          // Final desperate attempt - search for any .mp4 URLs in the content
+          if (result.videoUrls.length === 0) {
+            console.log('Attempting final broad MP4 search in Puppeteer...');
+            const allMp4Regex = /https:\/\/[^"'\s]*\.mp4[^"'\s]*/g;
+            let mp4Match;
+            while ((mp4Match = allMp4Regex.exec(content)) !== null) {
+              let url = mp4Match[0];
+              if ((url.includes('cdninstagram') || url.includes('fbcdn') || url.includes('scontent')) &&
+                  !url.includes('/rsrc.php/') && 
+                  !url.includes('profile_pic') &&
+                  !url.includes('blob:')) {
+                result.videoUrls.push(url);
+                result.allUrls.push(url);
+                console.log('Found MP4 URL via broad search:', url.substring(0, 100) + '...');
+              }
+            }
+          }
+
           // Debug: Log the first 500 characters of script content if no videos found
           if (result.videoUrls.length === 0 && content.length > 1000) {
             console.log('Script content sample (first 500 chars):', content.substring(0, 500));
